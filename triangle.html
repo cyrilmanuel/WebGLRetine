@@ -1,15 +1,17 @@
 <!DOCTYPE html>
 <!-- saved from url=(0052)http://webgl3d.info/ex/ch03_eg01_SingleTriangle.html -->
-<html lang="fr"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-    
+<html lang="fr">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
     <link rel="stylesheet" href="fileOther/stylesheet.css">
     <script src="fileOther/commonFunctions.js">
     </script>
-      <script src="fileOther/gl-matrix-min.js">
-      </script>
-      <script src="fileOther/webglTools.js">
-      </script>
-      <script id="shader-vs" type="x-shader/x-vertex">
+    <script src="fileOther/gl-matrix-min.js">
+    </script>
+    <script src="fileOther/webglTools.js">
+    </script>
+    <script id="shader-vs" type="x-shader/x-vertex">
         attribute vec3 aVertexPosition;
         attribute vec4 aColor;
         uniform mat4 uMVMatrix;
@@ -19,8 +21,9 @@
           vColor = aColor;
           gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
         }
-      </script>
-      <script id="shader-fs" type="x-shader/x-fragment">
+
+    </script>
+    <script id="shader-fs" type="x-shader/x-fragment">
         #ifdef GL_ES
           precision highp float;
         #endif
@@ -28,8 +31,9 @@
         void main(void) {
           gl_FragColor = vColor;
         }
-      </script>
-      <script>
+
+    </script>
+    <script>
         var vertexBuffer = null;
         var indexBuffer = null;
         var colorBuffer = null;
@@ -38,84 +42,140 @@
         var colors = [];
         var mvMatrix = mat4.create();
         var pMatrix = mat4.create();
+        var rttFramebuffer;
+        var rttTexture;
 
-        function initShaderParameters(prg){
-          prg.vertexPositionAttribute = glContext.getAttribLocation(prg, "aVertexPosition");
-          glContext.enableVertexAttribArray(prg.vertexPositionAttribute);
-          prg.colorAttribute 			= glContext.getAttribLocation(prg, "aColor");
-          glContext.enableVertexAttribArray(prg.colorAttribute);
-          prg.pMatrixUniform          = glContext.getUniformLocation(prg, 'uPMatrix');
-          prg.mvMatrixUniform         = glContext.getUniformLocation(prg, 'uMVMatrix');
+        function initTextureFramebuffer() {
+            rttFramebuffer = glContext.createFramebuffer();
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER,rttFramebuffer);
+            rttFramebuffer.width=500;
+            rttFramebuffer.height=500;
+
+            // espace pour la texture sur la cg (WEBTOOL textureWithImage)
+
+            rttTexture = glContext.createTexture();
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTexture);
+            glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_MAG_FILTER, glContext.LINEAR);
+            glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_MIN_FILTER, glContext.LINEAR_MIPMAP_NEAREST);
+            glContext.generateMipmap(glContext.TEXTURE_2D);
+            glContext.texImage2D(glContext.TEXTURE_2D, 0, glContext.RGBA, rttFramebuffer.width, rttFramebuffer.height, 0, glContext.RGBA, glContext.UNSIGNED_BYTE, null);
+
+            // mtn on a préparer un espace pour la texture qui est vide et de taille du rttFramebuffer. contiendra pour les couleurs, le canevas.
+
+            // on va  définir le buffer de rendu
+            var renderbuffer = glContext.createRenderbuffer();
+            glContext.bindRenderbuffer(glContext.RENDERBUFFER, renderbuffer);
+            glContext.renderbufferStorage(glContext.RENDERBUFFER,glContext.DEPTH_COMPONENT16, rttFramebuffer.width, rttFramebuffer.height);
+
+            /*
+            * Nous attachons tout à la framebuffer actuelle (rappelez-vous, nous avons lié notre nouveau pour être le courant juste après sa création en haut de la fonction).
+            * Nous lui disons que l'espace du framebuffer pour les couleurs de rendu ( gl.COLOR_ATTACHMENT0 ) est notre texture, et que la mémoire qu'il doit utiliser pour
+            * obtenir des informations de profondeur ( gl.DEPTH_ATTACHMENT ) est le tampon de profondeur que nous venons de créer.
+            * */
+            glContext.framebufferTexture2D(glContext.FRAMEBUFFER, glContext.COLOR_ATTACHMENT0, glContext.TEXTURE_2D, rttTexture, 0);
+            glContext.framebufferRenderbuffer(glContext.FRAMEBUFFER, glContext.DEPTH_ATTACHMENT, glContext.RENDERBUFFER, renderbuffer);
+
+            /*
+            * maintenant que tout est correctement créer est binder, on les remets a 0
+            * */
+            glContext.bindTexture(glContext.TEXTURE_2D, null);
+            glContext.bindRenderbuffer(glContext.RENDERBUFFER, null);
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+
+
         }
-        function initBuffers(){
 
-          // POS X Y Z
-          vertices.push(-1.0, -1.0, 0.0);
-          vertices.push( 1.0, -1.0, 0.0);
-          vertices.push( 0.0,  1.0, 0.0);
+        function initShaderParameters(prg) {
+            prg.vertexPositionAttribute = glContext.getAttribLocation(prg, "aVertexPosition");
+            glContext.enableVertexAttribArray(prg.vertexPositionAttribute);
+            prg.colorAttribute = glContext.getAttribLocation(prg, "aColor");
+            glContext.enableVertexAttribArray(prg.colorAttribute);
+            prg.pMatrixUniform = glContext.getUniformLocation(prg, 'uPMatrix');
+            prg.mvMatrixUniform = glContext.getUniformLocation(prg, 'uMVMatrix');
+        }
+        function initBuffers() {
+
+            // POS X Y Z
+            vertices.push(-1.0, -1.0, 0.0);
+            vertices.push(1.0, -1.0, 0.0);
+            vertices.push(0.0, 1.0, 0.0);
 
             vertices.push(-1, 1.0, 0.0);
-            vertices.push( 1.0,1.0, 0.0);
-            vertices.push( 0.0,-1.0, 0.0);
+            vertices.push(1.0, 1.0, 0.0);
+            vertices.push(0.0, -1.0, 0.0);
 
 
-           // color R G B TRANSPARENCE
-          colors.push(0.0, 0.0, 0.0, 1.0);
-          colors.push(0.0, 0.0, 0.0, 1.0);
-          colors.push(0.0, 0.0, 0.0, 1.0);
+            // color R G B TRANSPARENCE
+            colors.push(0.0, 0.0, 0.0, 1.0);
+            colors.push(0.0, 0.0, 0.0, 1.0);
+            colors.push(0.0, 0.0, 0.0, 1.0);
 
 
             colors.push(1.0, 1.0, 1.0, 1.0);
             colors.push(1.0, 1.0, 1.0, 1.0);
             colors.push(1.0, 1.0, 1.0, 1.0);
 
-            indices.push(0,1,2);
-            indices.push(3,4,5);
+            indices.push(0, 1, 2);
+            indices.push(3, 4, 5);
 
 
-          vertexBuffer = getVertexBufferWithVertices(vertices);
-          colorBuffer  = getVertexBufferWithVertices(colors);
-          indexBuffer  = getIndexBufferWithIndices(indices);
+            vertexBuffer = getVertexBufferWithVertices(vertices);
+            colorBuffer = getVertexBufferWithVertices(colors);
+            indexBuffer = getIndexBufferWithIndices(indices);
 
         }
-        function drawScene(){
+        function drawScene() {
+            // etablie le frameBUFFER
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFramebuffer);
+            // mis en place du buffer frame
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
 
-          glContext.enable(glContext.DEPTH_TEST);
-          glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
-          glContext.viewport(0, 0, c_width, c_height);
-          mat4.identity(pMatrix);
-          mat4.identity(mvMatrix);
+            glContext.enable(glContext.DEPTH_TEST);
+            glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+            glContext.viewport(0, 0, c_width, c_height);
+            mat4.identity(pMatrix);
+            mat4.identity(mvMatrix);
 
-          glContext.uniformMatrix4fv(prg.pMatrixUniform, false, pMatrix);
-          glContext.uniformMatrix4fv(prg.mvMatrixUniform, false, mvMatrix);
-          glContext.bindBuffer(glContext.ARRAY_BUFFER, vertexBuffer);
-          glContext.vertexAttribPointer(prg.vertexPositionAttribute, 3, glContext.FLOAT, false, 0, 0);
-          glContext.bindBuffer(glContext.ARRAY_BUFFER, colorBuffer);
-          glContext.vertexAttribPointer(prg.colorAttribute, 4, glContext.FLOAT, false, 0, 0);
-          glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, indexBuffer);
+            glContext.uniformMatrix4fv(prg.pMatrixUniform, false, pMatrix);
+            glContext.uniformMatrix4fv(prg.mvMatrixUniform, false, mvMatrix);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, vertexBuffer);
+            glContext.vertexAttribPointer(prg.vertexPositionAttribute, 3, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, colorBuffer);
+            glContext.vertexAttribPointer(prg.colorAttribute, 4, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, indexBuffer);
 
             // type du graphique
-          glContext.drawElements(glContext.TRIANGLES, indices.length, glContext.UNSIGNED_SHORT,0);
+            glContext.drawElements(glContext.TRIANGLES, indices.length, glContext.UNSIGNED_SHORT, 0);
+
+
+            glContext.activeTexture(glContext.TEXTURE0);
+
+
+
         }
-        function initWebGL(){
-          glContext = getGLContext('webgl-canvas');
+        function initWebGL() {
+            glContext = getGLContext('webgl-canvas');
             glContext.clearColor(0.9, 0.9, 0.9, 1.0);
-          initProgram();
-          initBuffers();
-          renderLoop();
+            initProgram();
+            initTextureFramebuffer();
+            initBuffers();
+            renderLoop();
         }
-      </script>
-  <title>Un simple triangle</title></head>
-  <body onload="initWebGL()">
-    <script>
-    </script><header>
-      <h1>Un simple triangle<br></h1>
-      <br>&nbsp;&nbsp;<a href="http://webgl3d.info/" style="text-decoration:none; color: white;">WebGL par la pratique© 2015</a></header>
-    <br>
-     Un simple triangle.
-    <br>
-    <canvas id="webgl-canvas" width="500" height="500">
-      HTML5 is not supported
-    </canvas>
-  
-</body></html>
+    </script>
+    <title>Un simple triangle</title></head>
+<body onload="initWebGL()">
+<script>
+</script>
+<header>
+    <h1>Un simple triangle<br></h1>
+    <br>&nbsp;&nbsp;<a href="http://webgl3d.info/" style="text-decoration:none; color: white;">WebGL par la pratique©
+    2015</a></header>
+<br>
+Un simple triangle.
+<br>
+<canvas id="webgl-canvas" width="500" height="500">
+    HTML5 is not supported
+</canvas>
+
+</body>
+</html>
