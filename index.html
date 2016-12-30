@@ -37,12 +37,21 @@
           if(uSamplerBool == 1)
           {
             vec4 color = texture2D(uSampler, vTexCoord);
-
+             color += vec4(0.0, 0.0, 0.5, 0.0);
             gl_FragColor = color;
           }
           else
           {
+            if(uSamplerBool == 2)
+            {
+                vec4 color = texture2D(uSampler, vTexCoord);
+                 
+                gl_FragColor = color;
+            }
+            else
+            {
               gl_FragColor = vColor;
+            }
           }
         }
 
@@ -254,7 +263,7 @@
              // mis en place du buffer frame
              glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
 
-/*
+
             //----------------------------------- fin du premier buffer ---------------------------------
 
             glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFramebuffer2);
@@ -290,9 +299,9 @@
 
             // mis en place du buffer frame
             glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
-*/
-            //------------------------ fin du deuxieme framebuffer ------------------------------------
 
+            //------------------------ fin du deuxieme framebuffer ------------------------------------
+/*
 
             // SUR LE CANEVAS ON FAIT LE RENDU
 
@@ -324,7 +333,7 @@
             // type du graphique
             glContext.drawElements(glContext.TRIANGLE_STRIP, indices2.length, glContext.UNSIGNED_SHORT, 0);
 
-/*
+*/
             // SUR LE CANEVAS ON FAIT LE RENDU
 
             glContext.enable(glContext.DEPTH_TEST);
@@ -343,7 +352,7 @@
 
             glContext.activeTexture(glContext.TEXTURE0);
             glContext.bindTexture(glContext.TEXTURE_2D, rttTexture2);
-            glContext.uniform1i(prg.samplerUniform, 1);
+            glContext.uniform1i(prg.samplerUniform, 0);
 
             glContext.uniformMatrix4fv(prg.pMatrixUniform, false, pMatrix);
             glContext.uniformMatrix4fv(prg.mvMatrixUniform, false, mvMatrix);
@@ -354,7 +363,7 @@
 
             // type du graphique
             glContext.drawElements(glContext.TRIANGLE_STRIP, indices2.length, glContext.UNSIGNED_SHORT, 0);
-*/
+
         }
         function initWebGL() {
             glContext = getGLContext('webgl-canvas');
