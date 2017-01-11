@@ -317,6 +317,120 @@
     <script>
 
         /***************************************************************************************************************
+         *      shader for the ACTIVE CELL    *
+         **************************************************************************************************************/
+    </script>
+    <script id="shader-vs-6" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec2 textCoord;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        varying vec2 vTexCoord;
+        void main(void) {
+          vTexCoord = textCoord;
+          gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="shader-fs-6" type="x-shader/x-fragment">
+       #ifdef GL_ES
+          precision highp float;
+        #endif
+        uniform sampler2D uSamplerA;
+        uniform sampler2D uSamplerB;
+        varying vec2 vTexCoord;
+         uniform float fill_area_threshold;
+        uniform float tex_width;
+        uniform float tex_height;
+
+        void main( void )
+        {
+
+            float dx = 1.0/tex_width;
+            float dy = 1.0/tex_height;
+
+            vec2 coordinateTex = vec2(vTexCoord.s, vTexCoord.t);
+            vec2 coordinateTex_x = vec2(vTexCoord.s, vTexCoord.t-dx);
+            vec2 coordinateTex_X = vec2(vTexCoord.s, vTexCoord.t+dx);
+		    vec2 coordinateTex_y  = vec2(vTexCoord.s-dy, vTexCoord.t);
+		    vec2 coordinateTex_Y  = vec2(vTexCoord.s+dy, vTexCoord.t);
+		    vec2 coordinateTex_xy = vec2(vTexCoord.s-dy, vTexCoord.t-dx);
+            vec2 coordinateTex_Xy = vec2(vTexCoord.s-dy, vTexCoord.t+dx);
+            vec2 coordinateTex_xY = vec2(vTexCoord.s+dy, vTexCoord.t-dx);
+            vec2 coordinateTex_XY = vec2(vTexCoord.s+dy, vTexCoord.t+dx);
+
+
+            vec3 tex_INF = texture2D( uSamplerB, coordinateTex ).xyz;
+
+            vec3 tex   =  texture2D( uSamplerA, coordinateTex ).xyz;
+            vec3 tex_x =  texture2D( uSamplerA, coordinateTex_x ).xyz;
+            vec3 tex_X =  texture2D( uSamplerA, coordinateTex_X ).xyz;
+            vec3 tex_y =  texture2D( uSamplerA, coordinateTex_y ).xyz;
+            vec3 tex_Y =  texture2D( uSamplerA, coordinateTex_Y ).xyz;
+            vec3 tex_xy = texture2D( uSamplerA, coordinateTex_xy ).xyz;
+            vec3 tex_Xy = texture2D( uSamplerA, coordinateTex_Xy ).xyz;
+            vec3 tex_xY = texture2D( uSamplerA, coordinateTex_xY ).xyz;
+            vec3 tex_XY = texture2D( uSamplerA, coordinateTex_XY ).xyz;
+
+            //---
+            // 0. Init
+            float intensity = tex.r-tex.b;
+            float max_grey_intensity = 0.4;
+            float texture_influence_lumin = (tex_INF.r+tex_INF.g+tex_INF.b)/ 3.0;
+
+            // 1. influence of the new_data:
+            if( texture_influence_lumin > .5+fill_area_threshold )
+              intensity = 1.0;
+            else if( texture_influence_lumin < .5-fill_area_threshold )
+              intensity = -1.0;
+            else
+            {
+
+            // 2. Current surrounding influence:
+            // 2.1 Counting neighbor white/black majority:
+            float max_red = 0.0;
+            float max_blue = 0.0;
+
+            if( (tex_x.r > max_red) ) max_red = tex_x.r;
+            else if( tex_x.b > max_blue ) max_blue = tex_x.b;
+
+            if( (tex_y.r > max_red) ) max_red = tex_y.r;
+            else if( tex_y.b > max_blue ) max_blue = tex_y.b;
+
+            if( (tex_X.r > max_red) ) max_red = tex_X.r;
+            else if( tex_X.b > max_blue ) max_blue = tex_X.b;
+
+            if( (tex_Y.r > max_red) ) max_red = tex_Y.r;
+            else if( tex_Y.b > max_blue ) max_blue = tex_Y.b;
+
+            // 2.2 current influence:
+            if( max_red+max_blue > 0.0 )
+            {
+            if( max_red > max_blue )
+              intensity = max_red*.95;
+            else
+              intensity = -max_blue*.95;
+             }
+           }
+
+            // 3. final color:
+            if( intensity > 0.0 )
+              gl_FragColor.rgb = vec3( intensity, 0.0, 0.0);
+            else if (intensity < 0.0)
+              gl_FragColor.rgb = vec3( 0.0, 0.0, -intensity);
+            else
+              gl_FragColor.rgb = vec3( 0.0, 0.0, 0.0);
+
+            gl_FragColor.a = 1.0;
+        }
+
+
+
+
+
+    </script>
+    <script>
+
+        /***************************************************************************************************************
          *      shader for the RenderTexture      *
          **************************************************************************************************************/
     </script>
@@ -441,6 +555,13 @@
             var fragmentShaderScene5 = getTextContent("shader-fs-5");
             progList[5] = createProgram(glContext, vertexShaderScene5, fragmentShaderScene5);
 
+            /*******************************************
+             * Inits the shader for the SOUSTRACTION TEXTURE BOOLEAN
+             *******************************************/
+            var vertexShaderScene6 = getTextContent("shader-vs-6");
+            var fragmentShaderScene6 = getTextContent("shader-fs-6");
+            progList[6] = createProgram(glContext, vertexShaderScene6, fragmentShaderScene6);
+
 
 
             /*******************************************
@@ -544,6 +665,24 @@
             ptr.samplerUniformA5 = glContext.getUniformLocation(progList[5], "uSamplerA");
             ptr.samplerUniformB5 = glContext.getUniformLocation(progList[5], "uSamplerB");
             ptr.contrast_coef5 = glContext.getUniformLocation(progList[5], "contrast_coef");
+
+
+            /*******************************************
+             * Inits the pointers for the ACTIVE CELL FILTER
+             *******************************************/
+
+            ptr.vertexPositionAttribute6 = glContext.getAttribLocation(progList[6], "aVertexPosition");
+            glContext.enableVertexAttribArray(ptr.vertexPositionAttribute6);
+            ptr.textureCoordsAttribute6 = glContext.getAttribLocation(progList[6], "textCoord");
+            glContext.enableVertexAttribArray(ptr.textureCoordsAttribute6);
+            ptr.pMatrixUniform6 = glContext.getUniformLocation(progList[6], 'uPMatrix');
+            ptr.mvMatrixUniform6 = glContext.getUniformLocation(progList[6], 'uMVMatrix');
+            ptr.samplerUniformA6 = glContext.getUniformLocation(progList[6], "uSamplerA");
+            ptr.samplerUniformB6 = glContext.getUniformLocation(progList[6], "uSamplerB");
+            ptr.tex_width6 = glContext.getUniformLocation(progList[6], "tex_width");
+            ptr.tex_height6 = glContext.getUniformLocation(progList[6], "tex_height");
+            ptr.fill_area_threshold = glContext.getUniformLocation(progList[6], "fill_area_threshold");
+
 
             /*******************************************
              * Inits the pointers for the rendering programme
@@ -815,7 +954,7 @@
             // *****               DESSINE SUR LE 3ieme FRAME BUFFER ( Persistante )                *****
             // *****                                                                                *****
             // ******************************************************************************************
-            glContext.useProgram(progList[5]);
+            glContext.useProgram(progList[6]);
             glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[3]);
 
             // clear le buffer
@@ -829,20 +968,22 @@
             glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
             glContext.activeTexture(glContext.TEXTURE0);
             glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[1]);
-            glContext.uniform1i(ptr.samplerUniformA5, 0);
+            glContext.uniform1i(ptr.samplerUniformA6, 0);
 
             glContext.activeTexture(glContext.TEXTURE1);
             glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[2]);
-            glContext.uniform1i(ptr.samplerUniformB5, 1);
+            glContext.uniform1i(ptr.samplerUniformB6, 1);
 
-            glContext.uniformMatrix4fv(ptr.pMatrixUniform5, false, pMatrix);
-            glContext.uniformMatrix4fv(ptr.mvMatrixUniform5, false, mvMatrix);
+            glContext.uniformMatrix4fv(ptr.pMatrixUniform6, false, pMatrix);
+            glContext.uniformMatrix4fv(ptr.mvMatrixUniform6, false, mvMatrix);
             glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
-            glContext.vertexAttribPointer(ptr.vertexPositionAttribute5, 3, glContext.FLOAT, false, 0, 0);
+            glContext.vertexAttribPointer(ptr.vertexPositionAttribute6, 3, glContext.FLOAT, false, 0, 0);
             glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
-            glContext.vertexAttribPointer(ptr.textureCoordsAttribute5, 2, glContext.FLOAT, false, 0, 0);
+            glContext.vertexAttribPointer(ptr.textureCoordsAttribute6, 2, glContext.FLOAT, false, 0, 0);
 
-            glContext.uniform1f(ptr.contrast_coef5, 0.2);
+            glContext.uniform1f(ptr.fill_area_threshold, 0.5);
+            glContext.uniform1f(ptr.tex_height6, rttFrameBufferTab[2].height);
+            glContext.uniform1f(ptr.tex_width6, rttFrameBufferTab[2].width);
 
             glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
 
