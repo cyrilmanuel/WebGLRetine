@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="fr">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" href="../FabioManuelDaMotaMarques/tests/css/stylesheet.css">
+		<script src="fileOther/commonFunctions.js">
+		</script>
+		<script src="fileOther/gl-matrix-min.js">
+		</script>
+		<script src="fileOther/webglTools.js">
+		</script>
+		
+		<!-- Vertx shader -->
+		<script id="shader-vs" type="x-shader/x-vertex">
+			attribute vec3 aVertexPosition;
+			attribute vec2 aTextureCoord;
+			uniform mat4 uMVMatrix;
+			uniform mat4 uPMatrix;
+			varying vec2 vTextureCoord;
+			void main(void) 
+				{
+				vTextureCoord = aTextureCoord;
+				gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+				}
+		</script>
+		
+		<!-- Fragment shader -->
+		<script id="shader-fs" type="x-shader/x-fragment">
+			#ifdef GL_ES
+				precision highp float;
+			#endif
+			
+			uniform sampler2D uColorTexture;
+			varying vec2 vTextureCoord;
+			
+			void main(void) 
+				{
+				vec2 mapCoord = vec2(vTextureCoord.s, vTextureCoord.t);
+				vec4 texelColor = texture2D(uColorTexture, mapCoord);
+				gl_FragColor = texelColor.rgba;
+				}
+		</script>
+		
+		<script>
+			var currentTexID = 1;
+			const maxSample = 1;
+			var normalBuffer = null;
+			var vertexBuffer = null;
+			var indexBuffer = null;
+			var textCoordsBuffer = null;
+			var texColorTab = new Array();
+			var indices = [];
+			var vertices = [];
+			var textCoords =[];
+			var mvMatrix = mat4.create();
+			var pMatrix = mat4.create();
+			var normalMatrix = mat4.create();	
+			var textureOffsetX = 0.0;
+			var textureOffsetY = 0.0;
+			
+			//Gestion canvas
+			var canvas = [];
+			var context2d = [];
+			var nbOfLayers = 5;
+			var canvasWidth = 300;
+			var canvasHeight = 200;
+			var canvas2dBackColor = [240,240,240];	
+
+
+			
+			function setupCanvas()
+				{
+				for (var i =0; i < nbOfLayers; i++)
+					{
+					canvas.push(document.createElement("canvas"));
+					canvas[i].width = canvasWidth;
+					canvas[i].height = canvasHeight;
+					context2d.push( canvas[i].getContext("2d"));
+					context2d[i].fillStyle = "rgb("+canvas2dBackColor[0]+","+canvas2dBackColor[1]+
+									","+canvas2dBackColor[2]+")";
+					context2d[i].fillRect(0, 0, canvas[i].width, canvas[i].height);
+					}
+								
+				document.getElementById("canvasLayer1").appendChild(canvas[0]);
+				document.getElementById("canvasLayer2").appendChild(canvas[1]);
+				document.getElementById("canvasLayer3").appendChild(canvas[2]);
+				document.getElementById("canvasLayer4").appendChild(canvas[3]);
+				document.getElementById("canvasLayer5").appendChild(canvas[4]);
+				}
+			
+			function initShaderParameters(prg)
+				{
+				//Ponts entre CPU et GPU
+				prg.vertexPositionAttribute = glContext.getAttribLocation(prg, "aVertexPosition");
+				glContext.enableVertexAttribArray(prg.vertexPositionAttribute);
+				prg.textureCoordsAttribute  = glContext.getAttribLocation(prg, "aTextureCoord");
+				glContext.enableVertexAttribArray(prg.textureCoordsAttribute);
+				prg.pMatrixUniform          = glContext.getUniformLocation(prg, 'uPMatrix');
+				prg.mvMatrixUniform         = glContext.getUniformLocation(prg, 'uMVMatrix');
+				prg.colorTextureUniform 	= glContext.getUniformLocation(prg, "uColorTexture");
+				prg.deltaTexX 				= glContext.getUniformLocation(prg, "deltaTexX");
+				prg.deltaTexY				= glContext.getUniformLocation(prg, "deltaTexY");
+				}
+			
+			function initBuffers()
+				{
+				vertices = [ -1.0, -1.0, 0.0,
+							  1.0, -1.0, 0.0,
+							 -1.0,  1.0, 0.0,
+							  1.0,  1.0, 0.0 ];
+				normals = [ 0.0, 0.0, 1.0,
+							0.0, 0.0, 1.0,
+							0.0, 0.0, 1.0,
+							0.0, 0.0, 1.0 ];
+				indices = [ 0, 1, 2, 3 ];
+				textCoords = [  0.0, 0.0,
+								1.0, 0.0,
+								0.0, 1.0,
+								1.0, 1.0 ];
+				normalBuffer     = getArrayBufferWithArray(normals);
+				vertexBuffer     = getArrayBufferWithArray(vertices);
+				indexBuffer      = getIndexBufferWithIndices(indices);
+				textCoordsBuffer = getArrayBufferWithArray(textCoords);
+				}
+		
+			function drawScene()
+				{
+                        glContext.clearColor(0.9, 0.9, 0.9, 1.0);
+                        glContext.enable(glContext.DEPTH_TEST);
+                        glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+                        glContext.viewport(0.0, 0.0, c_width, c_height);
+
+
+                        mat4.identity(pMatrix);
+                        mat4.identity(mvMatrix);
+
+                        glContext.uniformMatrix4fv(prg.pMatrixUniform, false, pMatrix);
+                        glContext.uniformMatrix4fv(prg.mvMatrixUniform, false, mvMatrix);
+
+                        glContext.bindBuffer(glContext.ARRAY_BUFFER, normalBuffer);
+
+                        glContext.vertexAttribPointer(prg.vertexNormalAttribute, 3, glContext.FLOAT, false, 0, 0);
+                        glContext.bindBuffer(glContext.ARRAY_BUFFER, vertexBuffer);
+                        glContext.vertexAttribPointer(prg.vertexPositionAttribute, 3, glContext.FLOAT, false, 0, 0);
+
+                        glContext.bindBuffer(glContext.ARRAY_BUFFER, textCoordsBuffer);
+                        glContext.vertexAttribPointer(prg.textureCoordsAttribute, 2, glContext.FLOAT, false, 0, 0);
+
+                        glContext.activeTexture(glContext.TEXTURE0);
+                        glContext.bindTexture(glContext.TEXTURE_2D, texColorTab[0]);
+                        glContext.uniform1i(prg.colorTextureUniform, 0);
+
+                        glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, indexBuffer);
+                        glContext.drawElements(glContext.TRIANGLE_STRIP, indices.length, glContext.UNSIGNED_SHORT, 0);
+
+
+
+                    for (i=0; i<3; i++)
+                    {
+                        context2d[i].clearColor(0.9, 0.9, 0.9, 1.0);
+                        context2d[i].enable(glContext.DEPTH_TEST);
+                        context2d[i].clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+                        context2d[i].viewport(0.0, 0.0, c_width, c_height);
+
+
+                        mat4.identity(pMatrix);
+                        mat4.identity(mvMatrix);
+
+                        context2d[i].uniformMatrix4fv(prg.pMatrixUniform, false, pMatrix);
+                        context2d[i].uniformMatrix4fv(prg.mvMatrixUniform, false, mvMatrix);
+
+                        context2d[i].bindBuffer(context2d[i].ARRAY_BUFFER, normalBuffer);
+
+                        context2d[i].vertexAttribPointer(prg.vertexNormalAttribute, 3, context2d[i].FLOAT, false, 0, 0);
+                        context2d[i].bindBuffer(context2d[i].ARRAY_BUFFER, vertexBuffer);
+                        context2d[i].vertexAttribPointer(prg.vertexPositionAttribute, 3, context2d[i].FLOAT, false, 0, 0);
+
+                        context2d[i].bindBuffer(context2d[i].ARRAY_BUFFER, textCoordsBuffer);
+                        context2d[i].vertexAttribPointer(prg.textureCoordsAttribute, 2, context2d[i].FLOAT, false, 0, 0);
+
+                        context2d[i].activeTexture(context2d[i].TEXTURE0);
+                        context2d[i].bindTexture(context2d[i].TEXTURE_2D, texColorTab[0]);
+                        context2d[i].uniform1i(prg.colorTextureUniform, 0);
+
+                        context2d[i].bindBuffer(context2d[i].ELEMENT_ARRAY_BUFFER, indexBuffer);
+                        context2d[i].drawElements(context2d[i].TRIANGLE_STRIP, indices.length, context2d[i].UNSIGNED_SHORT, 0);
+
+
+                    }
+				}
+		
+			function initWebGL()
+				{
+				glContext = getGLContext('canvasWithoutTreatment');
+				initProgram();
+				setupCanvas();
+				initBuffers();
+				initTextureWithImage( "len_top.jpg", texColorTab );
+				renderLoop();
+				}
+		</script>
+	</head>
+	<body onload="initWebGL()">
+		<header>
+			<h1>Retina Simulation</h1>
+		</header>
+		
+		<!-- Une table de 4 lignes et 3 colonnes
+			2 lignes avec canvas et 2 avec les sliders-->
+		<table>
+			<tbody>
+				<!-- 1ere ligne -->
+				<tr>
+					<td>
+						<p>Image sans traitement</p>
+						<canvas id="canvasWithoutTreatment" width="300" height="200">
+							HTML5 n'est pas supporté
+						</canvas>
+					</td>
+					<td>
+						<p>Couche des cônes</p>
+						<div id="canvasLayer1">
+						</div>
+					</td>
+					<td>
+						<p>Couche des Horizontales</p>
+						<div id="canvasLayer2">
+						</div>
+					</td>
+				
+				</tr>
+				
+				<!-- 2eme ligne -->
+				<tr>
+					<td colspan="2">
+					</td>
+					<td>
+						<label>0</label>
+						<input id="sliderLayer2" type="range" min="0" max="20" value="5" step="1" onchange ="setNbOfIterationsInLayer2()"></input>
+						<label>20</label>
+						<p id="nbOfIterationsInLayer2">5</p>
+					</td>
+				</tr>
+				
+				<!-- 3eme ligne -->
+				<tr>
+					<td>
+						<p>Couche des Ganglionaires</p>
+						<div id="canvasLayer5">
+						</div>
+					</td>
+					<td>
+						<p>Couche des Amacrines</p>
+						<div id="canvasLayer4">
+						</div>
+					</td>
+					<td>
+						<p>Couche des Bipolaires</p>
+						<div id="canvasLayer3">
+						</div>
+					</td>
+				</tr>
+				
+				<!-- 4eme ligne -->
+				<tr>
+					<td>
+					</td>
+					<td>
+						<label>0</label>
+						<input id="sliderLayer4" type="range" min="0" max="20" value="5" step="1" onchange ="setNbOfIterationsInLayer4()"></input>
+						<label>20</label>
+						<p id="nbOfIterationsInLayer4">5</p>
+					</td>
+					<td>
+					</td>
+				</tr>
+			</tbody>
+		</table>
+	</body>
+</html>

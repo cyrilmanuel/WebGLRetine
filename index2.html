@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<!-- saved from url=(0052)http://webgl3d.info/ex/ch03_eg01_SingleTriangle.html -->
+<html lang="fr">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+    <link rel="stylesheet" href="fileOther/stylesheet.css">
+    <script src="fileOther/commonFunctions.js">
+    </script>
+    <script src="fileOther/gl-matrix-min.js">
+    </script>
+    <script src="fileOther/webglTools.js">
+    </script>
+
+    <script>
+        /***************************************************************************************************************
+         *      shader for the first rendering     *
+         **************************************************************************************************************/
+    </script>
+    <script id="shader-vs-0" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec4 aColor;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        varying vec4 vColor;
+        void main(void) {
+          vColor = aColor;
+          gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="shader-fs-0" type="x-shader/x-fragment">
+        #ifdef GL_ES
+          precision highp float;
+        #endif
+        varying vec4 vColor;
+        void main(void) {
+           gl_FragColor = vColor;
+        }
+    </script>
+
+    <script>
+        /***************************************************************************************************************
+         *     shader for the second rendering  BLUR     *
+         **************************************************************************************************************/
+    </script>
+    <script id="shader-vs-1" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec2 textCoord;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        varying vec2 vTexCoord;
+        void main(void) {
+          vTexCoord = textCoord;
+          gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="shader-fs-1" type="x-shader/x-fragment">
+
+         #ifdef GL_ES
+          precision highp float;
+        #endif
+        uniform sampler2D uSampler;
+        uniform float blur_alpha;
+        varying vec2 vTexCoord;
+        uniform float tex_width;
+        uniform float tex_height;
+
+        void main(void) {
+            float dx = 1.0/tex_width;
+            float dy = 1.0/tex_height;
+
+            vec2 coordinateTex = vec2(vTexCoord.s, vTexCoord.t);
+            vec2 coordinateTex_x = vec2(vTexCoord.s, vTexCoord.t-dx);
+            vec2 coordinateTex_X = vec2(vTexCoord.s, vTexCoord.t+dx);
+		    vec2 coordinateTex_y  = vec2(vTexCoord.s-dy, vTexCoord.t);
+		    vec2 coordinateTex_Y  = vec2(vTexCoord.s+dy, vTexCoord.t);
+
+			vec4 tex = texture2D(uSampler, coordinateTex);
+			vec4 tex_x = texture2D(uSampler, coordinateTex_x);
+			vec4 tex_X = texture2D(uSampler, coordinateTex_X);
+			vec4 tex_y = texture2D(uSampler, coordinateTex_y);
+			vec4 tex_Y = texture2D(uSampler, coordinateTex_Y);
+
+            float neigh_alpha = blur_alpha/4.0;
+	        vec4 current_color = tex*(1.0-blur_alpha) + tex_x*neigh_alpha + tex_X*neigh_alpha + tex_y*neigh_alpha + tex_Y*neigh_alpha;
+	        gl_FragColor = current_color;
+        }
+    </script>
+
+    <script>
+        /***************************************************************************************************************
+         *      shader for the 3 : GRADIENT     *
+         **************************************************************************************************************/
+    </script>
+    <script id="shader-vs-2" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec2 textCoord;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        varying vec2 vTexCoord;
+        void main(void) {
+          vTexCoord = textCoord;
+          gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="shader-fs-2" type="x-shader/x-fragment">
+        #ifdef GL_ES
+          precision highp float;
+        #endif
+        uniform sampler2D uSampler;
+        varying vec2 vTexCoord;
+        uniform float       tex_width;
+        uniform float       tex_height;
+        uniform float     orient_tolerence;   // between 0.01 to 0.25
+
+        void main(void) {
+            float dx = 1.0 / tex_width;
+            float dy = 1.0 / tex_height;
+
+        //--- Neighborhood "states": ---
+            vec2 coordinateTex = vec2(vTexCoord.s, vTexCoord.t);
+            vec2 coordinateTex_x = vec2(vTexCoord.s, vTexCoord.t-dx);
+            vec2 coordinateTex_X = vec2(vTexCoord.s, vTexCoord.t+dx);
+		    vec2 coordinateTex_y  = vec2(vTexCoord.s-dy, vTexCoord.t);
+		    vec2 coordinateTex_Y  = vec2(vTexCoord.s+dy, vTexCoord.t);
+
+		    vec4 tex = texture2D(uSampler, coordinateTex);
+			vec4 tex_x = texture2D(uSampler, coordinateTex_x);
+			vec4 tex_X = texture2D(uSampler, coordinateTex_X);
+			vec4 tex_y = texture2D(uSampler, coordinateTex_y);
+			vec4 tex_Y = texture2D(uSampler, coordinateTex_Y);
+
+            //--- Shader core: ---
+	        float Gx = 0.0;
+	        float Gy = 0.0;
+
+            // 1. Luminance at (x, X, y, and Y) from -1 to 1:
+                float lum_x = (tex_x.r+tex_x.g+tex_x.b)/1.5 -1.;
+                float lum_X = (tex_X.r+tex_X.g+tex_X.b)/1.5 -1.;
+                float lum_y = (tex_y.r+tex_y.g+tex_y.b)/1.5 -1.;
+                float lum_Y = (tex_Y.r+tex_Y.g+tex_Y.b)/1.5 -1.;
+
+                // 2. Gradient over (x) and (y) axes:
+                if( ((lum_X > orient_tolerence) && (lum_x < -orient_tolerence)) ||
+                    ((lum_X < -orient_tolerence) && (lum_x > orient_tolerence)) )
+                  Gx = lum_X-lum_x;
+
+                if( ((lum_Y > orient_tolerence) && (lum_y < -orient_tolerence)) ||
+                    ((lum_Y < -orient_tolerence) && (lum_y > orient_tolerence)) )
+                  Gy = lum_Y-lum_y;
+
+            // 3. pertinent angle cells:
+            gl_FragColor.rgba = vec4(0.0,1.0,0.0,1.0);
+
+            if( abs( Gx ) > orient_tolerence )
+            {
+              gl_FragColor.g = 0.0;
+              gl_FragColor.r += 1.;
+              if( Gx*Gy < 0. ) gl_FragColor.r -= 0.5;
+            }
+
+            if( abs( Gy ) > orient_tolerence )
+            {
+              gl_FragColor.g = 0.0;
+              gl_FragColor.b += 1.;
+              if( Gx*Gy < 0. ) gl_FragColor.b -= 0.5;
+            }
+
+            // 4. if green (and therefore no gradiant) => plug webcam input image
+            if( gl_FragColor.g > 0.99 ){
+              gl_FragColor = tex;
+            }else{
+                // write in green the diagonals
+                if( (gl_FragColor.b == 0.5) && (gl_FragColor.r == .5) )
+                {
+                    gl_FragColor.g = 1.0;
+                    gl_FragColor.r = 1.0;
+                    gl_FragColor.b = 0.0;
+                }
+                else if( (gl_FragColor.b == 1.0) && (gl_FragColor.r == 1.0) )
+                {
+                    gl_FragColor.g = 1.0;
+                    gl_FragColor.r = 0.0;
+                    gl_FragColor.b = 1.0;
+                }
+            }
+        }
+    </script>
+    <script>
+
+        /***************************************************************************************************************
+         *      shader for the PERSISTENT     *
+         **************************************************************************************************************/
+    </script>
+    <script id="shader-vs-3" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec2 textCoord;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        varying vec2 vTexCoord;
+        void main(void) {
+          vTexCoord = textCoord;
+          gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="shader-fs-3" type="x-shader/x-fragment">
+       #ifdef GL_ES
+          precision highp float;
+        #endif
+        uniform sampler2D uSamplerA;
+        uniform sampler2D uSamplerB;
+        uniform float persistence;   // entre 1 et 0
+        varying vec2 vTexCoord;
+        void main( void )
+        {
+            vec3 old_texture = texture2D(uSamplerA, vTexCoord.xy).rgb;
+            vec3 new_texture = texture2D(uSamplerB, vTexCoord.xy).rgb;
+
+            gl_FragColor.xyz = (1.0-persistence)*new_texture.xyz + persistence*old_texture.xyz;
+            gl_FragColor.a = 1.0;
+        }
+    </script>
+    <script>
+
+        /***************************************************************************************************************
+         *      shader for the SOUSTRACTION TEXT     *
+         **************************************************************************************************************/
+    </script>
+    <script id="shader-vs-4" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec2 textCoord;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        varying vec2 vTexCoord;
+        void main(void) {
+          vTexCoord = textCoord;
+          gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="shader-fs-4" type="x-shader/x-fragment">
+       #ifdef GL_ES
+          precision highp float;
+        #endif
+        uniform sampler2D uSamplerA;
+        uniform sampler2D uSamplerB;
+        uniform float contrast_coef;
+        varying vec2 vTexCoord;
+        void main( void )
+        {
+            vec3 TexCone = texture2D(uSamplerA, vTexCoord.xy).rgb;
+            vec3 TexHorizontal = texture2D(uSamplerB, vTexCoord.xy).rgb;
+
+            //--- texture substraction;
+            vec3 current_color = TexHorizontal - TexCone;
+
+            gl_FragColor.rgb = .5 + current_color*contrast_coef;
+            gl_FragColor.a = 1.0;
+        }
+    </script>
+    <script>
+
+        /***************************************************************************************************************
+         *      shader for the SOUSTRACTION TEXT  BOOLEAN    *
+         **************************************************************************************************************/
+    </script>
+    <script id="shader-vs-5" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec2 textCoord;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        varying vec2 vTexCoord;
+        void main(void) {
+          vTexCoord = textCoord;
+          gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="shader-fs-5" type="x-shader/x-fragment">
+       #ifdef GL_ES
+          precision highp float;
+        #endif
+        uniform sampler2D uSamplerA;
+        uniform sampler2D uSamplerB;
+        uniform float contrast_coef;
+        varying vec2 vTexCoord;
+
+        void main( void )
+        {
+            vec3 TexCone = texture2D(uSamplerA, vTexCoord.xy).rgb;
+            vec3 TexHorizontal = texture2D(uSamplerB, vTexCoord.xy).rgb;
+
+            vec3 current_color = TexHorizontal - TexCone;
+            gl_FragColor.rgb = .5 + current_color * contrast_coef;
+            if( gl_FragColor.r<0.0 ) gl_FragColor.r = 0.0;
+            if( gl_FragColor.g<0.0 ) gl_FragColor.g = 0.0;
+            if( gl_FragColor.b<0.0 ) gl_FragColor.b = 0.0;
+            if( gl_FragColor.r>1.0 ) gl_FragColor.r = 1.0;
+            if( gl_FragColor.g>1.0 ) gl_FragColor.g = 1.0;
+            if( gl_FragColor.b>1.0 ) gl_FragColor.b = 1.0;
+
+            if( (gl_FragColor.r<0.45)&&(gl_FragColor.g<0.45)&&(gl_FragColor.b<0.45) )
+            {
+              gl_FragColor.rgb = vec3( 0.0, 0.0, 0.0 );
+            }
+            else if( (gl_FragColor.r>0.55)&&(gl_FragColor.g>0.55)&&(gl_FragColor.b>0.55) )
+            {
+              gl_FragColor.rgb = vec3( 1.0, 1.0, 1.0 );
+            }
+            else
+            {
+              gl_FragColor.rgb = vec3( 0.5, 0.5, 0.5 );
+            }
+            gl_FragColor.a = 1.0;
+        }
+    </script>
+    <script>
+
+        /***************************************************************************************************************
+         *      shader for the ACTIVE CELL    *
+         **************************************************************************************************************/
+    </script>
+    <script id="shader-vs-6" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec2 textCoord;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        varying vec2 vTexCoord;
+        void main(void) {
+          vTexCoord = textCoord;
+          gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="shader-fs-6" type="x-shader/x-fragment">
+       #ifdef GL_ES
+          precision highp float;
+        #endif
+        uniform sampler2D uSamplerA;
+        uniform sampler2D uSamplerB;
+        varying vec2 vTexCoord;
+         uniform float fill_area_threshold;
+        uniform float tex_width;
+        uniform float tex_height;
+
+        void main( void )
+        {
+            float dx = 1.0/tex_width;
+            float dy = 1.0/tex_height;
+
+            vec2 coordinateTex = vec2(vTexCoord.s, vTexCoord.t);
+            vec2 coordinateTex_x = vec2(vTexCoord.s, vTexCoord.t-dx);
+            vec2 coordinateTex_X = vec2(vTexCoord.s, vTexCoord.t+dx);
+		    vec2 coordinateTex_y  = vec2(vTexCoord.s-dy, vTexCoord.t);
+		    vec2 coordinateTex_Y  = vec2(vTexCoord.s+dy, vTexCoord.t);
+		    vec2 coordinateTex_xy = vec2(vTexCoord.s-dy, vTexCoord.t-dx);
+            vec2 coordinateTex_Xy = vec2(vTexCoord.s-dy, vTexCoord.t+dx);
+            vec2 coordinateTex_xY = vec2(vTexCoord.s+dy, vTexCoord.t-dx);
+            vec2 coordinateTex_XY = vec2(vTexCoord.s+dy, vTexCoord.t+dx);
+
+
+            vec3 tex_INF = texture2D( uSamplerB, coordinateTex ).xyz;
+
+            vec3 tex   =  texture2D( uSamplerA, coordinateTex ).xyz;
+            vec3 tex_x =  texture2D( uSamplerA, coordinateTex_x ).xyz;
+            vec3 tex_X =  texture2D( uSamplerA, coordinateTex_X ).xyz;
+            vec3 tex_y =  texture2D( uSamplerA, coordinateTex_y ).xyz;
+            vec3 tex_Y =  texture2D( uSamplerA, coordinateTex_Y ).xyz;
+            vec3 tex_xy = texture2D( uSamplerA, coordinateTex_xy ).xyz;
+            vec3 tex_Xy = texture2D( uSamplerA, coordinateTex_Xy ).xyz;
+            vec3 tex_xY = texture2D( uSamplerA, coordinateTex_xY ).xyz;
+            vec3 tex_XY = texture2D( uSamplerA, coordinateTex_XY ).xyz;
+
+            //---
+            // 0. Init
+            float intensity = tex.r-tex.b;
+            float max_grey_intensity = 0.4;
+            float texture_influence_lumin = (tex_INF.r+tex_INF.g+tex_INF.b)/ 3.0;
+
+            // 1. influence of the new_data:
+            if( texture_influence_lumin > .5+fill_area_threshold )
+              intensity = 1.0;
+            else if( texture_influence_lumin < .5-fill_area_threshold )
+              intensity = -1.0;
+            else
+            {
+
+            // 2. Current surrounding influence:
+            // 2.1 Counting neighbor white/black majority:
+            float max_red = 0.0;
+            float max_blue = 0.0;
+
+            if( (tex_x.r > max_red) ) max_red = tex_x.r;
+            else if( tex_x.b > max_blue ) max_blue = tex_x.b;
+
+            if( (tex_y.r > max_red) ) max_red = tex_y.r;
+            else if( tex_y.b > max_blue ) max_blue = tex_y.b;
+
+            if( (tex_X.r > max_red) ) max_red = tex_X.r;
+            else if( tex_X.b > max_blue ) max_blue = tex_X.b;
+
+            if( (tex_Y.r > max_red) ) max_red = tex_Y.r;
+            else if( tex_Y.b > max_blue ) max_blue = tex_Y.b;
+
+            // 2.2 current influence:
+            if( max_red+max_blue > 0.0 )
+            {
+            if( max_red > max_blue )
+              intensity = max_red*.95;
+            else
+              intensity = -max_blue*.95;
+             }
+           }
+
+            // 3. final color:
+            if( intensity > 0.0 )
+              gl_FragColor.rgb = vec3( intensity, 0.0, 0.0);
+            else if (intensity < 0.0)
+              gl_FragColor.rgb = vec3( 0.0, 0.0, -intensity);
+            else
+              gl_FragColor.rgb = vec3( 0.0, 0.0, 0.0);
+
+            gl_FragColor.a = 1.0;
+        }
+    </script>
+    <script>
+
+        /***************************************************************************************************************
+         *      shader for the RenderTexture      *
+         **************************************************************************************************************/
+    </script>
+    <script id="shader-vs-Render" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec4 aColor;
+        attribute vec2 textCoord;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        varying vec4 vColor;
+        varying vec2 vTexCoord;
+        void main(void) {
+          vColor = aColor;
+          vTexCoord = textCoord;
+          gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="shader-fs-Render" type="x-shader/x-fragment">
+       #ifdef GL_ES
+          precision highp float;
+        #endif
+        varying vec4 vColor;
+        uniform sampler2D uSampler;
+        varying vec2 vTexCoord;
+        void main(void) {
+            vec4 color = texture2D(uSampler, vTexCoord);
+            gl_FragColor = color;
+        }
+    </script>
+    <script>
+        // dessin des triangles
+        var triangleVertexBuffer = null;
+        var triangleIndexBuffer = null;
+        var triangleColorBuffer = null;
+
+        var indicesTriangle = [];
+        var verticesTriangle = [];
+        var colorsTriangle = [];
+
+        // dessin du carré pour le rendu. carré qui prend le canevas (rendu final)
+        var squareVertexBuffer = null;
+        var squareIndexBuffer = null;
+        var squareColorBuffer = null;
+
+        var indicesSquareCanevas = [];
+        var verticesSquareCanevas = [];
+        var colorsSquareCanevas = [];
+
+        // dessin du carré pour le rendu. carré qui prend le rendu des vue retine sur le canevas
+        var multiSquareVertexBuffer = null;
+        var multiSquareIndexBuffer = null;
+        var multiSquareColorBuffer = null;
+        var	textCoords = new Array();
+
+        var indicesMultiSquareCanevas = [];
+        var verticesMultiSquareCanevas = [];
+        var colorsMultiSquareCanevas = [];
+        var textureBuffersArray = [];
+
+        var mvMatrix = mat4.create();
+        var pMatrix = mat4.create();
+
+        var rttFrameBufferTab = [];
+        var rttTextureTab = [];
+        var nombreFrameBuffer = 5;
+
+        var progList = [];
+        var ptr = new Object();
+
+        function initCamera()
+        {
+            mat4.identity(mvMatrix);
+            mat4.perspective(pMatrix, degToRad(45.0), c_width / c_height, 0.1, 1000.0);
+        }
+
+        function initShaders()
+        {
+            /*******************************************
+             * Inits the shader for the first rendering
+             *******************************************/
+            //Selection of the 2 shader texts for the first rendering (webcam)
+            var vertexShader0 = getTextContent("shader-vs-0");
+            var fragmentShader0 = getTextContent("shader-fs-0");
+            //Create the program for the shader
+            progList[0] = createProgram(glContext, vertexShader0, fragmentShader0);
+
+            /*******************************************
+             * Inits the shader for the BLUR
+             *******************************************/
+            var vertexShaderScene1 = getTextContent("shader-vs-1");
+            var fragmentShaderScene1 = getTextContent("shader-fs-1");
+            progList[1] = createProgram(glContext, vertexShaderScene1, fragmentShaderScene1);
+
+            /*******************************************
+             * Inits the shader for the GRADIENT
+             *******************************************/
+            var vertexShaderScene2 = getTextContent("shader-vs-2");
+            var fragmentShaderScene2 = getTextContent("shader-fs-2");
+            progList[2] = createProgram(glContext, vertexShaderScene2, fragmentShaderScene2);
+
+            /*******************************************
+             * Inits the shader for the PERSISTENT
+             *******************************************/
+            var vertexShaderScene3 = getTextContent("shader-vs-3");
+            var fragmentShaderScene3 = getTextContent("shader-fs-3");
+            progList[3] = createProgram(glContext, vertexShaderScene3, fragmentShaderScene3);
+
+            /*******************************************
+             * Inits the shader for the SOUSTRACTION TEXTURE
+             *******************************************/
+            var vertexShaderScene4 = getTextContent("shader-vs-4");
+            var fragmentShaderScene4 = getTextContent("shader-fs-4");
+            progList[4] = createProgram(glContext, vertexShaderScene4, fragmentShaderScene4);
+
+            /*******************************************
+             * Inits the shader for the SOUSTRACTION TEXTURE BOOLEAN
+             *******************************************/
+            var vertexShaderScene5 = getTextContent("shader-vs-5");
+            var fragmentShaderScene5 = getTextContent("shader-fs-5");
+            progList[5] = createProgram(glContext, vertexShaderScene5, fragmentShaderScene5);
+
+            /*******************************************
+             * Inits the shader for the SOUSTRACTION TEXTURE BOOLEAN
+             *******************************************/
+            var vertexShaderScene6 = getTextContent("shader-vs-6");
+            var fragmentShaderScene6 = getTextContent("shader-fs-6");
+            progList[6] = createProgram(glContext, vertexShaderScene6, fragmentShaderScene6);
+
+            /*******************************************
+             * Inits the shader for the rendering
+             *******************************************/
+            var vertexShaderSceneRender = getTextContent("shader-vs-Render");
+            var fragmentShaderSceneRender = getTextContent("shader-fs-Render");
+            progList[10] = createProgram(glContext, vertexShaderSceneRender, fragmentShaderSceneRender);
+
+            initShaderParameters();
+
+            //We define the planet progam as the current program
+            glContext.useProgram(progList[0]);
+        }
+
+        function initShaderParameters()
+        {
+            /*******************************************
+             * Inits the pointers for the first rendering drawForm
+             *******************************************/
+            ptr.vertexPositionAttribute0 = glContext.getAttribLocation(progList[0], "aVertexPosition");
+            glContext.enableVertexAttribArray(ptr.vertexPositionAttribute0);
+            ptr.colorAttribute0 = glContext.getAttribLocation(progList[0], "aColor");
+            glContext.enableVertexAttribArray(ptr.colorAttribute0);
+            ptr.pMatrixUniform0 = glContext.getUniformLocation(progList[0], 'uPMatrix');
+            ptr.mvMatrixUniform0 = glContext.getUniformLocation(progList[0], 'uMVMatrix');
+
+            /*******************************************
+             * Inits the pointers for the second rendering BLUR
+             *******************************************/
+            ptr.vertexPositionAttribute1 = glContext.getAttribLocation(progList[1], "aVertexPosition");
+            glContext.enableVertexAttribArray(ptr.vertexPositionAttribute1);
+            ptr.textureCoordsAttribute1 = glContext.getAttribLocation(progList[1], "textCoord");
+            glContext.enableVertexAttribArray(ptr.textureCoordsAttribute1);
+            ptr.pMatrixUniform1 = glContext.getUniformLocation(progList[1], 'uPMatrix');
+            ptr.mvMatrixUniform1 = glContext.getUniformLocation(progList[1], 'uMVMatrix');
+            ptr.samplerUniform1 = glContext.getUniformLocation(progList[1], "uSampler");
+            ptr.tex_width1 = glContext.getUniformLocation(progList[1], "tex_width");
+            ptr.tex_height1 = glContext.getUniformLocation(progList[1], "tex_height");
+            ptr.blur_alpha = glContext.getUniformLocation(progList[1], "blur_alpha");
+
+            /*******************************************
+             * Inits the pointers for the GRADIENT
+             *******************************************/
+            ptr.vertexPositionAttribute2 = glContext.getAttribLocation(progList[2], "aVertexPosition");
+            glContext.enableVertexAttribArray(ptr.vertexPositionAttribute2);
+            ptr.textureCoordsAttribute2 = glContext.getAttribLocation(progList[2], "textCoord");
+            glContext.enableVertexAttribArray(ptr.textureCoordsAttribute2);
+            ptr.pMatrixUniform2 = glContext.getUniformLocation(progList[2], 'uPMatrix');
+            ptr.mvMatrixUniform2 = glContext.getUniformLocation(progList[2], 'uMVMatrix');
+            ptr.samplerUniform2 = glContext.getUniformLocation(progList[2], "uSampler");
+            ptr.tex_width2 = glContext.getUniformLocation(progList[2], "tex_width");
+            ptr.tex_height2 = glContext.getUniformLocation(progList[2], "tex_height");
+            ptr.orient_tolerence =  glContext.getUniformLocation(progList[2], "orient_tolerence");
+
+            /*******************************************
+             * Inits the pointers for the PERSISTENT
+             *******************************************/
+            ptr.vertexPositionAttribute3 = glContext.getAttribLocation(progList[3], "aVertexPosition");
+            glContext.enableVertexAttribArray(ptr.vertexPositionAttribute3);
+            ptr.textureCoordsAttribute3 = glContext.getAttribLocation(progList[3], "textCoord");
+            glContext.enableVertexAttribArray(ptr.textureCoordsAttribute3);
+            ptr.pMatrixUniform3 = glContext.getUniformLocation(progList[3], 'uPMatrix');
+            ptr.mvMatrixUniform3 = glContext.getUniformLocation(progList[3], 'uMVMatrix');
+            ptr.samplerUniformA3 = glContext.getUniformLocation(progList[3], "uSamplerA");
+            ptr.samplerUniformB3 = glContext.getUniformLocation(progList[3], "uSamplerB");
+            ptr.persistence = glContext.getUniformLocation(progList[3], "persistence");
+
+            /*******************************************
+             * Inits the pointers for the SOUSTRACTION TEXTURE
+             *******************************************/
+            ptr.vertexPositionAttribute4 = glContext.getAttribLocation(progList[4], "aVertexPosition");
+            glContext.enableVertexAttribArray(ptr.vertexPositionAttribute4);
+            ptr.textureCoordsAttribute4 = glContext.getAttribLocation(progList[4], "textCoord");
+            glContext.enableVertexAttribArray(ptr.textureCoordsAttribute4);
+            ptr.pMatrixUniform4 = glContext.getUniformLocation(progList[4], 'uPMatrix');
+            ptr.mvMatrixUniform4 = glContext.getUniformLocation(progList[4], 'uMVMatrix');
+            ptr.samplerUniformA4 = glContext.getUniformLocation(progList[4], "uSamplerA");
+            ptr.samplerUniformB4 = glContext.getUniformLocation(progList[4], "uSamplerB");
+            ptr.contrast_coef = glContext.getUniformLocation(progList[4], "contrast_coef");
+
+            /*******************************************
+             * Inits the pointers for the SOUSTRACTION TEXTURE BOOLEAN
+             *******************************************/
+            ptr.vertexPositionAttribute5 = glContext.getAttribLocation(progList[5], "aVertexPosition");
+            glContext.enableVertexAttribArray(ptr.vertexPositionAttribute5);
+            ptr.textureCoordsAttribute5 = glContext.getAttribLocation(progList[5], "textCoord");
+            glContext.enableVertexAttribArray(ptr.textureCoordsAttribute5);
+            ptr.pMatrixUniform5 = glContext.getUniformLocation(progList[5], 'uPMatrix');
+            ptr.mvMatrixUniform5 = glContext.getUniformLocation(progList[5], 'uMVMatrix');
+            ptr.samplerUniformA5 = glContext.getUniformLocation(progList[5], "uSamplerA");
+            ptr.samplerUniformB5 = glContext.getUniformLocation(progList[5], "uSamplerB");
+            ptr.contrast_coef5 = glContext.getUniformLocation(progList[5], "contrast_coef");
+
+            /*******************************************
+             * Inits the pointers for the ACTIVE CELL FILTER
+             *******************************************/
+            ptr.vertexPositionAttribute6 = glContext.getAttribLocation(progList[6], "aVertexPosition");
+            glContext.enableVertexAttribArray(ptr.vertexPositionAttribute6);
+            ptr.textureCoordsAttribute6 = glContext.getAttribLocation(progList[6], "textCoord");
+            glContext.enableVertexAttribArray(ptr.textureCoordsAttribute6);
+            ptr.pMatrixUniform6 = glContext.getUniformLocation(progList[6], 'uPMatrix');
+            ptr.mvMatrixUniform6 = glContext.getUniformLocation(progList[6], 'uMVMatrix');
+            ptr.samplerUniformA6 = glContext.getUniformLocation(progList[6], "uSamplerA");
+            ptr.samplerUniformB6 = glContext.getUniformLocation(progList[6], "uSamplerB");
+            ptr.tex_width6 = glContext.getUniformLocation(progList[6], "tex_width");
+            ptr.tex_height6 = glContext.getUniformLocation(progList[6], "tex_height");
+            ptr.fill_area_threshold = glContext.getUniformLocation(progList[6], "fill_area_threshold");
+
+            /*******************************************
+             * Inits the pointers for the rendering programme
+             *******************************************/
+            ptr.vertexPositionAttributeRender = glContext.getAttribLocation(progList[10], "aVertexPosition");
+            glContext.enableVertexAttribArray(ptr.vertexPositionAttributeRender);
+            ptr.colorAttributeRender = glContext.getAttribLocation(progList[10], "aColor");
+            glContext.enableVertexAttribArray(ptr.colorAttributeRender);
+            ptr.textureCoordsAttributeRender = glContext.getAttribLocation(progList[10], "textCoord");
+            glContext.enableVertexAttribArray(ptr.textureCoordsAttributeRender);
+            ptr.pMatrixUniformRender = glContext.getUniformLocation(progList[10], 'uPMatrix');
+            ptr.mvMatrixUniformRender = glContext.getUniformLocation(progList[10], 'uMVMatrix');
+            ptr.samplerUniformRender = glContext.getUniformLocation(progList[10], "uSampler");
+        }
+
+        function initTextureFramebufferTab()
+        {
+            for (i = 0; i < nombreFrameBuffer; i++)
+            {
+                rttFrameBufferTab[i] = glContext.createFramebuffer();
+                glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[i]);
+                rttFrameBufferTab[i].width = 512;
+                rttFrameBufferTab[i].height = 512;
+                // espace pour la texture sur la cg (WEBTOOL textureWithImage)
+                rttTextureTab[i] = glContext.createTexture();
+                glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[i]);
+                glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_MAG_FILTER, glContext.LINEAR);
+                glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_MIN_FILTER, glContext.LINEAR_MIPMAP_NEAREST);
+                //glContext.generateMipmap(glContext.TEXTURE_2D);
+                glContext.texImage2D(glContext.TEXTURE_2D, 0, glContext.RGBA, rttFrameBufferTab[i].width, rttFrameBufferTab[i].height, 0, glContext.RGBA, glContext.UNSIGNED_BYTE, null);
+                // mtn on a préparer un espace pour la texture qui est vide et de taille du rttFramebuffer. contiendra pour les couleurs, le canevas.
+                // on va  définir le buffer de rendu
+                var renderbuffer = glContext.createRenderbuffer();
+                glContext.bindRenderbuffer(glContext.RENDERBUFFER, renderbuffer);
+                glContext.renderbufferStorage(glContext.RENDERBUFFER, glContext.DEPTH_COMPONENT16, rttFrameBufferTab[i].width, rttFrameBufferTab[i].height);
+                /*
+                 * Nous attachons tout à la framebuffer actuelle (rappelez-vous, nous avons lié notre nouveau pour être le courant juste après sa création en haut de la fonction).
+                 * Nous lui disons que l'espace du framebuffer pour les couleurs de rendu ( gl.COLOR_ATTACHMENT0 ) est notre texture, et que la mémoire qu'il doit utiliser pour
+                 * obtenir des informations de profondeur ( gl.DEPTH_ATTACHMENT ) est le tampon de profondeur que nous venons de créer.
+                 * */
+                glContext.framebufferTexture2D(glContext.FRAMEBUFFER, glContext.COLOR_ATTACHMENT0, glContext.TEXTURE_2D, rttTextureTab[i], 0);
+                glContext.framebufferRenderbuffer(glContext.FRAMEBUFFER, glContext.DEPTH_ATTACHMENT, glContext.RENDERBUFFER, renderbuffer);
+                /*
+                 * maintenant que tout est correctement créer est binder, on les remets a 0
+                 * */
+                glContext.bindTexture(glContext.TEXTURE_2D, null);
+                glContext.bindRenderbuffer(glContext.RENDERBUFFER, null);
+                glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+            }
+        }
+
+        function initBuffers()
+        {
+            // partie pour les triangles de base
+            // POS X Y Z
+            verticesTriangle.push(-1.0, -1.0, 0.0);
+            verticesTriangle.push(1.0, -1.0, 0.0);
+            verticesTriangle.push(0.0, 1.0, 0.0);
+
+            verticesTriangle.push(-1, 1.0, 0.0);
+            verticesTriangle.push(1.0, 1.0, 0.0);
+            verticesTriangle.push(0.0, -1.0, 0.0);
+
+            // color R G B TRANSPARENCE
+            colorsTriangle.push(0.0, 0.0, 0.0, 1.0);
+            colorsTriangle.push(0.0, 0.0, 0.0, 1.0);
+            colorsTriangle.push(0.0, 0.0, 0.0, 1.0);
+
+            colorsTriangle.push(1.0, 1.0, 1.0, 1.0);
+            colorsTriangle.push(1.0, 1.0, 1.0, 1.0);
+            colorsTriangle.push(1.0, 1.0, 1.0, 1.0);
+
+            indicesTriangle.push(0, 1, 2);
+            indicesTriangle.push(3, 4, 5);
+
+            triangleVertexBuffer = getVertexBufferWithVertices(verticesTriangle);
+            triangleColorBuffer = getVertexBufferWithVertices(colorsTriangle);
+            triangleIndexBuffer = getIndexBufferWithIndices(indicesTriangle);
+
+            // POS X Y Z
+            verticesSquareCanevas.push(-1.0, 1.0, 0.1);
+            verticesSquareCanevas.push(-1.0, -1.0, 0.1);
+            verticesSquareCanevas.push(1.0, 1.0, 0.1);
+            verticesSquareCanevas.push(1.0, -1.0, 0.1);
+
+            // color R G B TRANSPARENCE
+            colorsSquareCanevas.push(1.0, 1.0, 1.0, 1.0);
+            colorsSquareCanevas.push(1.0, 1.0, 1.0, 1.0);
+            colorsSquareCanevas.push(1.0, 1.0, 1.0, 1.0);
+            colorsSquareCanevas.push(1.0, 1.0, 1.0, 1.0);
+
+            indicesSquareCanevas.push(0, 1, 2, 3);
+
+            squareVertexBuffer = getVertexBufferWithVertices(verticesSquareCanevas);
+            squareColorBuffer = getVertexBufferWithVertices(colorsSquareCanevas);
+            squareIndexBuffer = getIndexBufferWithIndices(indicesSquareCanevas);
+
+            // POS X Y Z
+            verticesMultiSquareCanevas.push(-0.25, 0.25, 0.0);
+            verticesMultiSquareCanevas.push(-0.25, -0.25, 0.0);
+            verticesMultiSquareCanevas.push(0.25, 0.25, 0.0);
+            verticesMultiSquareCanevas.push(0.25, -0.25, 0.0);
+
+            // color R G B TRANSPARENCE
+            colorsMultiSquareCanevas.push(0.0, 1.0, 1.0, 1.0);
+            colorsMultiSquareCanevas.push(1.0, 0.0, 1.0, 1.0);
+            colorsMultiSquareCanevas.push(1.0, 1.0, 0.0, 1.0);
+            colorsMultiSquareCanevas.push(1.0, 1.0, 1.0, 1.0);
+
+            indicesMultiSquareCanevas.push(0, 1, 2, 3);
+
+            multiSquareVertexBuffer = getVertexBufferWithVertices(verticesMultiSquareCanevas);
+            multiSquareColorBuffer = getVertexBufferWithVertices(colorsMultiSquareCanevas);
+            multiSquareIndexBuffer = getIndexBufferWithIndices(indicesMultiSquareCanevas);
+
+            textCoords = [
+                    1, 1,
+                    1, 0,
+                    0, 1,
+                    0, 0,
+                ];
+            textureBuffersArray = getArrayBufferWithArray(textCoords);
+
+        }
+        function drawScene()
+        {
+            QinitTexture();
+            glContext.useProgram(progList[0]);
+            // ******************************************************************************************
+            // *****                                                                                *****
+            // *****               DESSINE SUR LE PREMIER FRAME BUFFER ( TRIANGLE N ET B )          *****
+            // *****                                                                                *****
+            // ******************************************************************************************
+
+            // etablie le frameBUFFER
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[0]);
+
+            // clear le buffer
+            glContext.viewport(0, 0, rttFrameBufferTab[0].width, rttFrameBufferTab[0].height);
+            glContext.enable(glContext.DEPTH_TEST);
+            glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+
+            mat4.identity(pMatrix);
+            mat4.identity(mvMatrix);
+
+            // dessine le triangle
+            glContext.uniformMatrix4fv(ptr.pMatrixUniform0, false, pMatrix);
+            glContext.uniformMatrix4fv(ptr.mvMatrixUniform0, false, mvMatrix);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, triangleVertexBuffer);
+            glContext.vertexAttribPointer(ptr.vertexPositionAttribute0, 3, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, triangleColorBuffer);
+            glContext.vertexAttribPointer(ptr.colorAttribute0, 4, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, triangleIndexBuffer);
+
+            glContext.activeTexture(glContext.TEXTURE0);
+            glContext.bindTexture(glContext.TEXTURE_2D, null);
+            // type du graphique
+            glContext.drawElements(glContext.TRIANGLES, indicesTriangle.length, glContext.UNSIGNED_SHORT, 0);
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[0]);
+            glContext.generateMipmap(glContext.TEXTURE_2D);
+            glContext.bindTexture(glContext.TEXTURE_2D, null);
+
+            // mis en place du buffer frame
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+
+            glContext.useProgram(progList[1]);
+
+
+            // ******************************************************************************************
+            // *****                                                                                *****
+            // *****               DESSINE SUR LE SECOND FRAME BUFFER ( TRIANGLE gradien )          *****
+            // *****                                                                                *****
+            // ******************************************************************************************
+            glContext.useProgram(progList[2]);
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[1]);
+
+            // clear le buffer
+            glContext.viewport(0, 0, rttFrameBufferTab[1].width, rttFrameBufferTab[1].height);
+            glContext.enable(glContext.DEPTH_TEST);
+            glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+
+            mat4.identity(pMatrix);
+            mat4.identity(mvMatrix);
+
+            glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
+            glContext.activeTexture(glContext.TEXTURE0);
+            // glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[0]);
+            glContext.bindTexture(glContext.TEXTURE_2D, QTexture);
+            glContext.uniform1i(ptr.samplerUniform2, 0);
+            glContext.uniformMatrix4fv(ptr.pMatrixUniform2, false, pMatrix);
+            glContext.uniformMatrix4fv(ptr.mvMatrixUniform2, false, mvMatrix);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+            glContext.vertexAttribPointer(ptr.vertexPositionAttribute2, 3, glContext.FLOAT, false, 0, 0);
+            //glContext.bindBuffer(glContext.ARRAY_BUFFER, squareColorBuffer);
+            //glContext.vertexAttribPointer(ptr.colorAttribute2, 4, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+            glContext.vertexAttribPointer(ptr.textureCoordsAttribute2, 2, glContext.FLOAT, false, 0, 0);
+
+           // glContext.uniform1f(ptr.blur_alpha, 0.3);
+            glContext.uniform1f(ptr.tex_height2, rttFrameBufferTab[1].height);
+            glContext.uniform1f(ptr.tex_width2, rttFrameBufferTab[1].width);
+            glContext.uniform1f(ptr.orient_tolerence, 0.20);
+            // type du graphique
+            glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[1]);
+            glContext.generateMipmap(glContext.TEXTURE_2D);
+            glContext.bindTexture(glContext.TEXTURE_2D, null);
+
+            // mis en place du buffer frame
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+
+            // ******************************************************************************************
+            // *****                                                                                *****
+            // *****               DESSINE SUR LE 3ieme FRAME BUFFER ( TRIANGLE BLUR )              *****
+            // *****                                                                                *****
+            // ******************************************************************************************
+            glContext.useProgram(progList[1]);
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[2]);
+
+            // clear le buffer
+            glContext.viewport(0, 0, rttFrameBufferTab[2].width, rttFrameBufferTab[2].height);
+            glContext.enable(glContext.DEPTH_TEST);
+            glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+
+            mat4.identity(pMatrix);
+            mat4.identity(mvMatrix);
+
+            glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
+            glContext.activeTexture(glContext.TEXTURE0);
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[0]);
+            glContext.uniform1i(ptr.samplerUniform1, 0);
+            glContext.uniformMatrix4fv(ptr.pMatrixUniform1, false, pMatrix);
+            glContext.uniformMatrix4fv(ptr.mvMatrixUniform1, false, mvMatrix);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+            glContext.vertexAttribPointer(ptr.vertexPositionAttribute1, 3, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+            glContext.vertexAttribPointer(ptr.textureCoordsAttribute1, 2, glContext.FLOAT, false, 0, 0);
+
+            glContext.uniform1f(ptr.blur_alpha, 0.3);
+            glContext.uniform1f(ptr.tex_height1, rttFrameBufferTab[2].height);
+            glContext.uniform1f(ptr.tex_width1, rttFrameBufferTab[2].width);
+
+            glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[2]);
+            glContext.generateMipmap(glContext.TEXTURE_2D);
+            glContext.bindTexture(glContext.TEXTURE_2D, null);
+
+            // mis en place du buffer frame
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+
+            // ******************************************************************************************
+            // *****                                                                                *****
+            // *****               DESSINE SUR LE 3ieme FRAME BUFFER ( Persistante )                *****
+            // *****                                                                                *****
+            // ******************************************************************************************
+            glContext.useProgram(progList[6]);
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[3]);
+
+            // clear le buffer
+            glContext.viewport(0, 0, rttFrameBufferTab[3].width, rttFrameBufferTab[3].height);
+            glContext.enable(glContext.DEPTH_TEST);
+            glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+
+            mat4.identity(pMatrix);
+            mat4.identity(mvMatrix);
+
+            glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
+            glContext.activeTexture(glContext.TEXTURE0);
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[1]);
+            glContext.uniform1i(ptr.samplerUniformA6, 0);
+
+            glContext.activeTexture(glContext.TEXTURE1);
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[2]);
+            glContext.uniform1i(ptr.samplerUniformB6, 1);
+
+            glContext.uniformMatrix4fv(ptr.pMatrixUniform6, false, pMatrix);
+            glContext.uniformMatrix4fv(ptr.mvMatrixUniform6, false, mvMatrix);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+            glContext.vertexAttribPointer(ptr.vertexPositionAttribute6, 3, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+            glContext.vertexAttribPointer(ptr.textureCoordsAttribute6, 2, glContext.FLOAT, false, 0, 0);
+
+            glContext.uniform1f(ptr.fill_area_threshold, 0.5);
+            glContext.uniform1f(ptr.tex_height6, rttFrameBufferTab[2].height);
+            glContext.uniform1f(ptr.tex_width6, rttFrameBufferTab[2].width);
+
+            glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[3]);
+            glContext.generateMipmap(glContext.TEXTURE_2D);
+            glContext.bindTexture(glContext.TEXTURE_2D, null);
+
+            // mis en place du buffer frame
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+
+            //------------------------ fin du deuxieme framebuffer ------------------------------------
+
+            // ******************************************************************************************
+            // *****                                                                                *****
+            // *****      DESSINE SUR LE 3ieme FRAME BUFFER ( soustraction entre texture )          *****
+            // *****                                                                                *****
+            // ******************************************************************************************
+            /*
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[2]);
+
+            // clear le buffer
+            glContext.viewport(0, 0, rttFrameBufferTab[2].width, rttFrameBufferTab[2].height);
+            glContext.enable(glContext.DEPTH_TEST);
+            glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+
+            mat4.identity(pMatrix);
+            mat4.identity(mvMatrix);
+
+            glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
+            glContext.activeTexture(glContext.TEXTURE0);
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[0]);
+            glContext.uniform1i(ptr.samplerUniformA3, 0);
+
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[1]);
+            glContext.uniform1i(ptr.samplerUniformB3, 0);
+
+            glContext.uniformMatrix4fv(ptr.pMatrixUniform3, false, pMatrix);
+            glContext.uniformMatrix4fv(ptr.mvMatrixUniform3, false, mvMatrix);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+            glContext.vertexAttribPointer(ptr.vertexPositionAttribute3, 3, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, squareColorBuffer);
+            glContext.vertexAttribPointer(ptr.colorAttribute3, 4, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+            glContext.vertexAttribPointer(ptr.textureCoordsAttribute3, 2, glContext.FLOAT, false, 0, 0);
+            // type du graphique
+            glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[2]);
+            glContext.generateMipmap(glContext.TEXTURE_2D);
+            glContext.bindTexture(glContext.TEXTURE_2D, null);
+
+            // mis en place du buffer frame
+            glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+
+            glContext.useProgram(progList[2]);
+            */
+            //------------------------ fin du deuxieme framebuffer ------------------------------------
+
+            // ******************************************************************************************
+            // *****                                                                                *****
+            // *****                        DESSINE SUR LE CANEVAS ( IMAGE DE FOND )                *****
+            // *****                                                                                *****
+            // ******************************************************************************************
+
+            glContext.useProgram(progList[10]);
+
+            glContext.enable(glContext.DEPTH_TEST);
+            glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+            glContext.viewport(0, 0, c_width, c_height);
+
+            // dessine le caré
+            mat4.identity(pMatrix);
+            mat4.identity(mvMatrix);
+
+            glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
+            glContext.activeTexture(glContext.TEXTURE0);
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[1]);
+            glContext.uniform1i(ptr.samplerUniformRender, 0);
+
+            glContext.uniformMatrix4fv(ptr.pMatrixUniformRender, false, pMatrix);
+            glContext.uniformMatrix4fv(ptr.mvMatrixUniformRender, false, mvMatrix);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+            glContext.vertexAttribPointer(ptr.vertexPositionAttributeRender, 3, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, squareColorBuffer);
+            glContext.vertexAttribPointer(ptr.colorAttributeRender, 4, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+            glContext.vertexAttribPointer(ptr.textureCoordsAttributeRender, 2, glContext.FLOAT, false, 0, 0);
+
+            // type du graphique
+            glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+
+            // ******************************************************************************************
+            // *****                                                                                *****
+            // *****                      DESSINE SUR LE CANEVAS ( PETIT CARRE RENDU )              *****
+            // *****                                                                                *****
+            // ******************************************************************************************
+            /*
+            glContext.useProgram(progList[1]);
+
+            // dessine le mini carrée
+
+            glContext.activeTexture(glContext.TEXTURE0);
+            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[0]);
+            glContext.uniform1i(ptr.samplerUniform1, 0);
+
+            glContext.uniformMatrix4fv(ptr.pMatrixUniform1, false, pMatrix);
+            glContext.uniformMatrix4fv(ptr.mvMatrixUniform1, false, mvMatrix);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, multiSquareVertexBuffer);
+            glContext.vertexAttribPointer(ptr.vertexPositionAttribute1, 3, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, multiSquareColorBuffer);
+            glContext.vertexAttribPointer(ptr.colorAttribute1, 4, glContext.FLOAT, false, 0, 0);
+            glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, multiSquareIndexBuffer);
+            glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+            glContext.vertexAttribPointer(ptr.textureCoordsAttribute1, 2, glContext.FLOAT, false, 0, 0);
+
+            // type du graphique
+            glContext.drawElements(glContext.TRIANGLE_STRIP, indicesMultiSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+            */
+        }
+        function initWebGL()
+        {
+            video = document.getElementById("videoElement");
+            glContext = getGLContext('webgl-canvas');
+            glContext.clearColor(0.9, 0.9, 0.9, 1.0);
+            //  initProgram();
+            initShaders();
+            initCamera();
+            initTextureFramebufferTab();
+            initBuffers();
+            renderLoop();
+        }
+
+        var QTexture = null;
+        var video = null;
+        navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia || navigator.oGetUserMedia;
+
+        if (navigator.getUserMedia) {
+            navigator.getUserMedia({video: true}, handleVideo, videoError);
+        }
+        function handleVideo(stream) {
+            video.src = window.URL.createObjectURL(stream);
+        }
+
+        function videoError(e) {
+            // do something
+            alert("C'est cassé");
+        }
+        function QinitTexture(sFilename, texturen) {
+            QTexture = glContext.createTexture();
+            var c = document.createElement("canvas");
+            c.width = 512;
+            c.height = 512;
+            var ctx = c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+            glContext.bindTexture(glContext.TEXTURE_2D, QTexture);
+            glContext.texImage2D(glContext.TEXTURE_2D, 0, glContext.RGBA, glContext.RGBA, glContext.UNSIGNED_BYTE, c);
+            glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_MIN_FILTER, glContext.NEAREST);
+            glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_MAG_FILTER, glContext.NEAREST);
+            glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_WRAP_S, glContext.CLAMP_TO_EDGE);
+            glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_WRAP_T, glContext.CLAMP_TO_EDGE);
+        }
+    </script>
+    <title>Un simple triangle</title>
+</head>
+<body> <!-- onload="initWebGL()" -->
+    <canvas id="webgl-canvas" width="500" height="500">
+        HTML5 is not supported
+    </canvas>
+    <video style="visibility: hidden;" autoplay="true" id="videoElement">
+
+    </video>
+</body>
+<script>
+    initWebGL();
+</script>
+</html>
