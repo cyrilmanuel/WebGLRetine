@@ -29,7 +29,6 @@
         }
 
 
-
     </script>
     <script id="shader-fs-0" type="x-shader/x-fragment">
         #ifdef GL_ES
@@ -41,8 +40,6 @@
             vec4 color = texture2D(uSampler, vTexCoord);
             gl_FragColor = color;
         }
-
-
 
     </script>
 
@@ -61,7 +58,6 @@
           vTexCoord = textCoord;
           gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
         }
-
 
 
     </script>
@@ -99,6 +95,12 @@
 
 
 
+
+
+
+
+
+
     </script>
 
     <script>
@@ -116,6 +118,12 @@
           vTexCoord = textCoord;
           gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
         }
+
+
+
+
+
+
 
 
 
@@ -205,6 +213,12 @@
 
 
 
+
+
+
+
+
+
     </script>
     <script>
 
@@ -222,6 +236,12 @@
           vTexCoord = textCoord;
           gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
         }
+
+
+
+
+
+
 
 
 
@@ -245,6 +265,12 @@
 
 
 
+
+
+
+
+
+
     </script>
     <script>
 
@@ -262,6 +288,12 @@
           vTexCoord = textCoord;
           gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
         }
+
+
+
+
+
+
 
 
 
@@ -288,6 +320,12 @@
 
 
 
+
+
+
+
+
+
     </script>
     <script>
 
@@ -305,6 +343,12 @@
           vTexCoord = textCoord;
           gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
         }
+
+
+
+
+
+
 
 
 
@@ -349,6 +393,12 @@
 
 
 
+
+
+
+
+
+
     </script>
     <script>
 
@@ -366,6 +416,12 @@
           vTexCoord = textCoord;
           gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
         }
+
+
+
+
+
+
 
 
 
@@ -463,6 +519,12 @@
 
 
 
+
+
+
+
+
+
     </script>
     <script>
 
@@ -498,24 +560,26 @@
         void main(void) {
             vec4 color = texture2D(uSampler, vTexCoord);
             gl_FragColor = color;
-
         }
-
 
 
     </script>
     <script>
 
-        var nbIterationBlur = 3;
-        var alphaBlur = 0.3;
+        var nbIterationBlurCell = 3;
+        var nbIterationBlurHorizontal = 6;
+        var alphaBlur = 0.50;
+        var persistanceHoriz = 0.85;
 
         var nbIterationGradient = 3;
         var toleranceGradient = 0.15;
 
 
         // parametre indiquant quelle buffer contient la derniere texture correct ( cas des multipasse)
-        var blurshaderfinal = 0;
+        var blurshaderfinalCone = 0;
         var gradientshaderfinal = 0;
+        var persistenceShaderFinal = 0;
+        var blurshaderfinalHoriz = 0;
 
         // dessin du carré pour le rendu. carré qui prend le canevas (rendu final)
         var squareVertexBuffer = null;
@@ -526,16 +590,10 @@
         var verticesSquareCanevas = [];
         var colorsSquareCanevas = [];
 
-        // dessin du carré pour le rendu. carré qui prend le rendu des vue retine sur le canevas
-        var multiSquareVertexBuffer = null;
-        var multiSquareIndexBuffer = null;
-        var multiSquareColorBuffer = null;
-        var textCoords = new Array();
 
-        var indicesMultiSquareCanevas = [];
-        var verticesMultiSquareCanevas = [];
-        var colorsMultiSquareCanevas = [];
+        var textCoords = new Array();
         var textureBuffersArray = [];
+
 
         var mvMatrix = mat4.create();
         var pMatrix = mat4.create();
@@ -543,7 +601,7 @@
         // parametre des Frames Buffers
         var rttFrameBufferTab = [];
         var rttTextureTab = [];
-        var nombreFrameBuffer = 9;
+        var nombreFrameBuffer = 10;
 
         // parametre pour la gestion des multi programme contenant les shader
         var progList = [];
@@ -553,7 +611,6 @@
         var textureWebcam = null;
         var video = null;
 
-        var canvasA = null;
         function initShaders() {
             /*******************************************
              * Inits the shader for the first rendering
@@ -734,13 +791,14 @@
                 glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[i]);
                 rttFrameBufferTab[i].width = 512;
                 rttFrameBufferTab[i].height = 512;
+
                 // espace pour la texture sur la cg (WEBTOOL textureWithImage)
                 rttTextureTab[i] = glContext.createTexture();
                 glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[i]);
                 glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_MAG_FILTER, glContext.LINEAR);
                 glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_MIN_FILTER, glContext.LINEAR_MIPMAP_NEAREST);
-               // glContext.generateMipmap(glContext.TEXTURE_2D);
                 glContext.texImage2D(glContext.TEXTURE_2D, 0, glContext.RGBA, rttFrameBufferTab[i].width, rttFrameBufferTab[i].height, 0, glContext.RGBA, glContext.UNSIGNED_BYTE, null);
+
                 // mtn on a préparer un espace pour la texture qui est vide et de taille du rttFramebuffer. contiendra pour les couleurs, le canevas.
                 // on va  définir le buffer de rendu
                 var renderbuffer = glContext.createRenderbuffer();
@@ -784,37 +842,23 @@
             squareIndexBuffer = getIndexBufferWithIndices(indicesSquareCanevas);
 
 
-            // POS X Y Z
-
-            verticesMultiSquareCanevas.push(1.0, 1.0, 0.1);
-            verticesMultiSquareCanevas.push(1.0, -1.0, 0.1);
-            verticesMultiSquareCanevas.push(-1.0, 1.0, 0.1);
-            verticesMultiSquareCanevas.push(-1.0, -1.0, 0.1);
-
-            // color R G B TRANSPARENCE
-            colorsMultiSquareCanevas.push(0.0, 1.0, 1.0, 1.0);
-            colorsMultiSquareCanevas.push(1.0, 0.0, 1.0, 1.0);
-            colorsMultiSquareCanevas.push(1.0, 1.0, 0.0, 1.0);
-            colorsMultiSquareCanevas.push(1.0, 1.0, 1.0, 1.0);
-
-            indicesMultiSquareCanevas.push(0, 1, 2, 3);
-
-            multiSquareVertexBuffer = getVertexBufferWithVertices(verticesMultiSquareCanevas);
-            multiSquareColorBuffer = getVertexBufferWithVertices(colorsMultiSquareCanevas);
-            multiSquareIndexBuffer = getIndexBufferWithIndices(indicesMultiSquareCanevas);
-
+            // POS X Y  pour la texture
             textCoords = [
-                0, 0,
                 0, 1,
-                1, 0,
+                0, 0,
                 1, 1,
+                1, 0,
             ];
             textureBuffersArray = getArrayBufferWithArray(textCoords);
 
         }
         function drawScene() {
+
+            // initialise la webcam
             initTextureWebcam();
+
             glContext.useProgram(progList[0]);
+
             // ******************************************************************************************
             // *****                                                                                *****
             // *****               DESSINE SUR LE PREMIER FRAME BUFFER LA WEBCAM                    *****
@@ -854,10 +898,12 @@
             glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
 
 
-            createImageFromTexture(glContext,"canvas2",rttTextureTab[0]);
+            // affichage de la texture de base dans le canvas0
+            createImageFromTexture(glContext, "canvas0", rttTextureTab[0], 512, 512);
+
             // ******************************************************************************************
             // *****                                                                                *****
-            // *****               DESSINE SUR LE 3ieme FRAME BUFFER ( TRIANGLE BLUR )              *****
+            // *****               DESSINE SUR LE cone  FRAME BUFFER (  BLUR )                      *****
             // *****                                                                                *****
             // ******************************************************************************************
 
@@ -866,7 +912,7 @@
             var numTextureEntrer = 0;
             var numTextureSortie = 0;
 
-            for (i = 0; i < nbIterationBlur; i++) {
+            for (i = 0; i < nbIterationBlurCell; i++) {
 
                 if (i == 0) {
                     numTextureSortie = 1;
@@ -887,8 +933,8 @@
                 glContext.enable(glContext.DEPTH_TEST);
                 glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
 
-                mat4.identity(pMatrix);
-                mat4.identity(mvMatrix);
+                //mat4.identity(pMatrix);
+                //mat4.identity(mvMatrix);
 
                 glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
                 glContext.activeTexture(glContext.TEXTURE0);
@@ -902,13 +948,13 @@
                 glContext.vertexAttribPointer(ptr.textureCoordsAttribute1, 2, glContext.FLOAT, false, 0, 0);
 
                 glContext.uniform1f(ptr.blur_alpha, alphaBlur);
-                glContext.uniform1f(ptr.tex_height1, rttFrameBufferTab[numTextureEntrer].height);
-                glContext.uniform1f(ptr.tex_width1, rttFrameBufferTab[numTextureEntrer].width);
+                glContext.uniform1f(ptr.tex_height1, rttFrameBufferTab[numTextureSortie].height);
+                glContext.uniform1f(ptr.tex_width1, rttFrameBufferTab[numTextureSortie].width);
 
                 glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
 
                 glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[numTextureSortie]);
-                blurshaderfinal = numTextureSortie;
+                blurshaderfinalCone = numTextureSortie;
                 glContext.generateMipmap(glContext.TEXTURE_2D);
                 glContext.bindTexture(glContext.TEXTURE_2D, null);
 
@@ -917,33 +963,48 @@
             }
 
 
-            createImageFromTexture(glContext,"canvas3",rttTextureTab[blurshaderfinal]);
+            // affiche le resultat après blur par les cones
+            createImageFromTexture(glContext, "canvas1", rttTextureTab[blurshaderfinalCone], 512, 512);
+
+
             // ******************************************************************************************
             // *****                                                                                *****
-            // *****               DESSINE SUR LE SECOND FRAME BUFFER ( TRIANGLE gradien )          *****
+            // *****           DESSINE SUR LE  FRAME BUFFER (BLUR HORIZONTAL ET Persistante )       *****
             // *****                                                                                *****
             // ******************************************************************************************
 
-            glContext.useProgram(progList[2]);
 
-            var numTextureEntrer = 0;
+            var numTextureEntrer1 = blurshaderfinalCone;
+            var numTextureEntrer2 = 0;
             var numTextureSortie = 0;
+            var numTextureSortieblurHoriz = 0;
 
-            for (i = 0; i < 3; i++) {
-
+            for (i = 0; i < nbIterationBlurHorizontal; i++) {
                 if (i == 0) {
                     numTextureSortie = 3;
-                    numTextureEntrer = 0;
+                    if (blurshaderfinalCone % 2 == 0) {
+                        numTextureEntrer2 = 0;
+                        numTextureEntrer1 = blurshaderfinalCone;
+                    } else {
+                        numTextureEntrer2 = 0;
+                        numTextureEntrer1 = blurshaderfinalCone;
+                    }
                 } else if (i % 2 == 0) {
-                    numTextureSortie = 3;
-                    numTextureEntrer = 4;
-                }
-                else {
-                    numTextureSortie = 4;
-                    numTextureEntrer = 3;
-                }
+                        numTextureSortie = 3;
+                        numTextureEntrer1 = blurshaderfinalHoriz;
+                        numTextureEntrer2 = persistenceShaderFinal;
+                    } else {
+                        numTextureSortie = 4;
+                        numTextureEntrer1 = persistenceShaderFinal;
+                        numTextureEntrer2 = blurshaderfinalHoriz;
+                    }
 
+
+
+
+                glContext.useProgram(progList[3]);
                 glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[numTextureSortie]);
+
                 // clear le buffer
                 glContext.viewport(0, 0, rttFrameBufferTab[numTextureSortie].width, rttFrameBufferTab[numTextureSortie].height);
                 glContext.enable(glContext.DEPTH_TEST);
@@ -954,23 +1015,75 @@
 
                 glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
                 glContext.activeTexture(glContext.TEXTURE0);
-                glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[numTextureEntrer]);
-                glContext.uniform1i(ptr.samplerUniform2, 0);
-                glContext.uniformMatrix4fv(ptr.pMatrixUniform2, false, pMatrix);
-                glContext.uniformMatrix4fv(ptr.mvMatrixUniform2, false, mvMatrix);
-                glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
-                glContext.vertexAttribPointer(ptr.vertexPositionAttribute2, 3, glContext.FLOAT, false, 0, 0);
-                glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
-                glContext.vertexAttribPointer(ptr.textureCoordsAttribute2, 2, glContext.FLOAT, false, 0, 0);
-                glContext.uniform1f(ptr.tex_height2, rttFrameBufferTab[numTextureEntrer].height);
-                glContext.uniform1f(ptr.tex_width2, rttFrameBufferTab[numTextureEntrer].width);
-                glContext.uniform1f(ptr.orient_tolerence, toleranceGradient);
+                glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[numTextureEntrer1]);
+                glContext.uniform1i(ptr.samplerUniformA3, 0);
 
-                // type du graphique
+                glContext.activeTexture(glContext.TEXTURE1);
+                glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[numTextureEntrer2]);
+                glContext.uniform1i(ptr.samplerUniformB3, 1);
+                glContext.uniformMatrix4fv(ptr.pMatrixUniform3, false, pMatrix);
+                glContext.uniformMatrix4fv(ptr.mvMatrixUniform3, false, mvMatrix);
+                glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+                glContext.vertexAttribPointer(ptr.vertexPositionAttribute3, 3, glContext.FLOAT, false, 0, 0);
+                glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+                glContext.vertexAttribPointer(ptr.textureCoordsAttribute3, 2, glContext.FLOAT, false, 0, 0);
+                glContext.uniform1f(ptr.persistence, persistanceHoriz);
+
                 glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
 
+                persistenceShaderFinal = numTextureSortie;
                 glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[numTextureSortie]);
-                gradientshaderfinal = numTextureSortie;
+                glContext.generateMipmap(glContext.TEXTURE_2D);
+                glContext.bindTexture(glContext.TEXTURE_2D, null);
+
+                // mis en place du buffer frame
+                glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+
+                //*****************************************************************************
+                // *
+                // *              aplication d'un blur sur la texture sortie de persistence.
+                // *
+                //*******************************************************************************
+
+                glContext.useProgram(progList[1]);
+                if (i == 0) {
+                    numTextureSortieblurHoriz = 5;
+                } else if (i % 2 == 0) {
+                    numTextureSortieblurHoriz = 5;
+                }
+                else {
+                    numTextureSortieblurHoriz = 6;
+                }
+
+
+                glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[numTextureSortieblurHoriz]);
+                // clear le buffer
+                glContext.viewport(0, 0, rttFrameBufferTab[numTextureSortieblurHoriz].width, rttFrameBufferTab[numTextureSortieblurHoriz].height);
+                glContext.enable(glContext.DEPTH_TEST);
+                glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+
+                mat4.identity(pMatrix);
+                mat4.identity(mvMatrix);
+
+                glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
+                glContext.activeTexture(glContext.TEXTURE0);
+                glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[persistenceShaderFinal]);
+                glContext.uniform1i(ptr.samplerUniform1, 0);
+                glContext.uniformMatrix4fv(ptr.pMatrixUniform1, false, pMatrix);
+                glContext.uniformMatrix4fv(ptr.mvMatrixUniform1, false, mvMatrix);
+                glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+                glContext.vertexAttribPointer(ptr.vertexPositionAttribute1, 3, glContext.FLOAT, false, 0, 0);
+                glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+                glContext.vertexAttribPointer(ptr.textureCoordsAttribute1, 2, glContext.FLOAT, false, 0, 0);
+
+                glContext.uniform1f(ptr.blur_alpha, alphaBlur);
+                glContext.uniform1f(ptr.tex_height1, rttFrameBufferTab[persistenceShaderFinal].height);
+                glContext.uniform1f(ptr.tex_width1, rttFrameBufferTab[persistenceShaderFinal].width);
+
+                glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+
+                glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[numTextureSortieblurHoriz]);
+                blurshaderfinalHoriz = numTextureSortieblurHoriz;
                 glContext.generateMipmap(glContext.TEXTURE_2D);
                 glContext.bindTexture(glContext.TEXTURE_2D, null);
 
@@ -978,164 +1091,228 @@
                 glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
             }
 
-            createImageFromTexture(glContext,"canvas4",rttTextureTab[gradientshaderfinal]);
-
-            // ******************************************************************************************
-            // *****                                                                                *****
-            // *****               DESSINE SUR LE 3ieme FRAME BUFFER ( Persistante )                *****r
-            // *****                                                                                *****
-            // ******************************************************************************************
-            glContext.useProgram(progList[6]);
-            glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[5]);
-
-            // clear le buffer
-            glContext.viewport(0, 0, rttFrameBufferTab[5].width, rttFrameBufferTab[5].height);
-            glContext.enable(glContext.DEPTH_TEST);
-            glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
-
-            mat4.identity(pMatrix);
-            mat4.identity(mvMatrix);
-
-            glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
-            glContext.activeTexture(glContext.TEXTURE0);
-            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[gradientshaderfinal]);
-            glContext.uniform1i(ptr.samplerUniformA6, 0);
-
-            glContext.activeTexture(glContext.TEXTURE1);
-            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[blurshaderfinal]);
-            glContext.uniform1i(ptr.samplerUniformB6, 1);
-
-            glContext.uniformMatrix4fv(ptr.pMatrixUniform6, false, pMatrix);
-            glContext.uniformMatrix4fv(ptr.mvMatrixUniform6, false, mvMatrix);
-            glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
-            glContext.vertexAttribPointer(ptr.vertexPositionAttribute6, 3, glContext.FLOAT, false, 0, 0);
-            glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
-            glContext.vertexAttribPointer(ptr.textureCoordsAttribute6, 2, glContext.FLOAT, false, 0, 0);
-             glContext.uniform1f(ptr.tex_height6, rttFrameBufferTab[gradientshaderfinal].height);
-             glContext.uniform1f(ptr.tex_width6, rttFrameBufferTab[gradientshaderfinal].width);
-            glContext.uniform1f(ptr.fill_area_threshold, 0.5);
+            createImageFromTexture(glContext, "canvas2", rttTextureTab[blurshaderfinalHoriz], 512, 512);
 
 
-            glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+         // ******************************************************************************************
+         // *****                                                                                *****
+         // *****      DESSINE SUR LE 3ieme FRAME BUFFER ( soustraction entre texture )          *****
+         // *****                                                                                *****
+         // ******************************************************************************************
 
-            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[5]);
-            glContext.generateMipmap(glContext.TEXTURE_2D);
-            glContext.bindTexture(glContext.TEXTURE_2D, null);
+         glContext.useProgram(progList[5]);
+         glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[7]);
 
-            // mis en place du buffer frame
-            glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+         // clear le buffer
+         glContext.viewport(0, 0, rttFrameBufferTab[7].width, rttFrameBufferTab[7].height);
+         glContext.enable(glContext.DEPTH_TEST);
+         glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
 
-            //------------------------ fin du deuxieme framebuffer ------------------------------------
+         mat4.identity(pMatrix);
+         mat4.identity(mvMatrix);
 
-            // ******************************************************************************************
-            // *****                                                                                *****
-            // *****      DESSINE SUR LE 3ieme FRAME BUFFER ( soustraction entre texture )          *****
-            // *****                                                                                *****
-            // ******************************************************************************************
-            /*
-             glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[2]);
+         glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
+         glContext.activeTexture(glContext.TEXTURE0);
+         glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[0]);
+         glContext.uniform1i(ptr.samplerUniformA5, 0);
 
-             // clear le buffer
-             glContext.viewport(0, 0, rttFrameBufferTab[2].width, rttFrameBufferTab[2].height);
-             glContext.enable(glContext.DEPTH_TEST);
-             glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+         glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[blurshaderfinalCone]);
+         glContext.uniform1i(ptr.samplerUniformB5, 0);
 
-             mat4.identity(pMatrix);
-             mat4.identity(mvMatrix);
+         glContext.uniformMatrix4fv(ptr.pMatrixUniform5, false, pMatrix);
+         glContext.uniformMatrix4fv(ptr.mvMatrixUniform5, false, mvMatrix);
+         glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+         glContext.vertexAttribPointer(ptr.vertexPositionAttribute5, 3, glContext.FLOAT, false, 0, 0);
+         glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+         glContext.vertexAttribPointer(ptr.textureCoordsAttribute5, 2, glContext.FLOAT, false, 0, 0);
+            glContext.uniform1f(ptr.contrast_coef5,1.0);
 
-             glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
-             glContext.activeTexture(glContext.TEXTURE0);
-             glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[0]);
-             glContext.uniform1i(ptr.samplerUniformA3, 0);
+         // type du graphique
+         glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
 
-             glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[1]);
-             glContext.uniform1i(ptr.samplerUniformB3, 0);
+         glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[7]);
+         glContext.generateMipmap(glContext.TEXTURE_2D);
+         glContext.bindTexture(glContext.TEXTURE_2D, null);
 
-             glContext.uniformMatrix4fv(ptr.pMatrixUniform3, false, pMatrix);
-             glContext.uniformMatrix4fv(ptr.mvMatrixUniform3, false, mvMatrix);
-             glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
-             glContext.vertexAttribPointer(ptr.vertexPositionAttribute3, 3, glContext.FLOAT, false, 0, 0);
-             glContext.bindBuffer(glContext.ARRAY_BUFFER, squareColorBuffer);
-             glContext.vertexAttribPointer(ptr.colorAttribute3, 4, glContext.FLOAT, false, 0, 0);
-             glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
-             glContext.vertexAttribPointer(ptr.textureCoordsAttribute3, 2, glContext.FLOAT, false, 0, 0);
-             // type du graphique
-             glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
-
-             glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[2]);
-             glContext.generateMipmap(glContext.TEXTURE_2D);
-             glContext.bindTexture(glContext.TEXTURE_2D, null);
-
-             // mis en place du buffer frame
-             glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
-
-             glContext.useProgram(progList[2]);
-             */
-            //------------------------ fin du deuxieme framebuffer ------------------------------------
-
-            // ******************************************************************************************
-            // *****                                                                                *****
-            // *****                        DESSINE SUR LE CANEVAS ( IMAGE DE FOND )                *****
-            // *****                                                                                *****
-            // ******************************************************************************************
-
-            glContext.useProgram(progList[10]);
-
-            glContext.enable(glContext.DEPTH_TEST);
-            glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
-            glContext.viewport(0, 0, c_width, c_height);
-
-            // dessine le caré
-            mat4.identity(pMatrix);
-            mat4.identity(mvMatrix);
-
-            glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
-            glContext.activeTexture(glContext.TEXTURE0);
-            glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[5]);
-            glContext.uniform1i(ptr.samplerUniformRender, 0);
-
-            glContext.uniformMatrix4fv(ptr.pMatrixUniformRender, false, pMatrix);
-            glContext.uniformMatrix4fv(ptr.mvMatrixUniformRender, false, mvMatrix);
-            glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
-            glContext.vertexAttribPointer(ptr.vertexPositionAttributeRender, 3, glContext.FLOAT, false, 0, 0);
-            glContext.bindBuffer(glContext.ARRAY_BUFFER, squareColorBuffer);
-            glContext.vertexAttribPointer(ptr.colorAttributeRender, 4, glContext.FLOAT, false, 0, 0);
-            glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
-            glContext.vertexAttribPointer(ptr.textureCoordsAttributeRender, 2, glContext.FLOAT, false, 0, 0);
-
-            // type du graphique
-            glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
-
-            // ******************************************************************************************
-            // *****                                                                                *****
-            // *****                      DESSINE SUR LE CANEVAS ( PETIT CARRE RENDU )              *****
-            // *****                                                                                *****
-            // ******************************************************************************************
-            /*
-             glContext.useProgram(progList[1]);
-
-             // dessine le mini carrée
-
-             glContext.activeTexture(glContext.TEXTURE0);
-             glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[0]);
-             glContext.uniform1i(ptr.samplerUniform1, 0);
-
-             glContext.uniformMatrix4fv(ptr.pMatrixUniform1, false, pMatrix);
-             glContext.uniformMatrix4fv(ptr.mvMatrixUniform1, false, mvMatrix);
-             glContext.bindBuffer(glContext.ARRAY_BUFFER, multiSquareVertexBuffer);
-             glContext.vertexAttribPointer(ptr.vertexPositionAttribute1, 3, glContext.FLOAT, false, 0, 0);
-             glContext.bindBuffer(glContext.ARRAY_BUFFER, multiSquareColorBuffer);
-             glContext.vertexAttribPointer(ptr.colorAttribute1, 4, glContext.FLOAT, false, 0, 0);
-             glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, multiSquareIndexBuffer);
-             glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
-             glContext.vertexAttribPointer(ptr.textureCoordsAttribute1, 2, glContext.FLOAT, false, 0, 0);
-
-             // type du graphique
-             glContext.drawElements(glContext.TRIANGLE_STRIP, indicesMultiSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
-             */
+         // mis en place du buffer frame
+         glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
 
 
+         createImageFromTexture(glContext, "canvas3", rttTextureTab[7], 512, 512);
+
+         // ******************************************************************************************
+         // *****                                                                                *****
+         // *****               DESSINE SUR LE SECOND FRAME BUFFER ( TRIANGLE gradien )          *****
+         // *****                                                                                *****
+         // ******************************************************************************************
+
+         /* glContext.useProgram(progList[2]);
+
+         var numTextureEntrer = 0;
+         var numTextureSortie = 0;
+
+         for (i = 0; i < 3; i++) {
+
+         if (i == 0) {
+         numTextureSortie = 3;
+         numTextureEntrer = 0;
+         } else if (i % 2 == 0) {
+         numTextureSortie = 3;
+         numTextureEntrer = 4;
+         }
+         else {
+         numTextureSortie = 4;
+         numTextureEntrer = 3;
+         }
+
+         glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[numTextureSortie]);
+         // clear le buffer
+         glContext.viewport(0, 0, rttFrameBufferTab[numTextureSortie].width, rttFrameBufferTab[numTextureSortie].height);
+         glContext.enable(glContext.DEPTH_TEST);
+         glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+
+         mat4.identity(pMatrix);
+         mat4.identity(mvMatrix);
+
+         glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
+         glContext.activeTexture(glContext.TEXTURE0);
+         glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[numTextureEntrer]);
+         glContext.uniform1i(ptr.samplerUniform2, 0);
+         glContext.uniformMatrix4fv(ptr.pMatrixUniform2, false, pMatrix);
+         glContext.uniformMatrix4fv(ptr.mvMatrixUniform2, false, mvMatrix);
+         glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+         glContext.vertexAttribPointer(ptr.vertexPositionAttribute2, 3, glContext.FLOAT, false, 0, 0);
+         glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+         glContext.vertexAttribPointer(ptr.textureCoordsAttribute2, 2, glContext.FLOAT, false, 0, 0);
+         glContext.uniform1f(ptr.tex_height2, rttFrameBufferTab[numTextureEntrer].height);
+         glContext.uniform1f(ptr.tex_width2, rttFrameBufferTab[numTextureEntrer].width);
+         glContext.uniform1f(ptr.orient_tolerence, toleranceGradient);
+
+         // type du graphique
+         glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+
+         glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[numTextureSortie]);
+         gradientshaderfinal = numTextureSortie;
+         glContext.generateMipmap(glContext.TEXTURE_2D);
+         glContext.bindTexture(glContext.TEXTURE_2D, null);
+
+         // mis en place du buffer frame
+         glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+         }
+
+         //createImageFromTexture(glContext,"canvas4",rttTextureTab[gradientshaderfinal]);
+
+         */
+        //------------------------ fin du deuxieme framebuffer ------------------------------------
+
+        // ******************************************************************************************
+        // *****                                                                                *****
+        // *****      DESSINE SUR LE 3ieme FRAME BUFFER ( soustraction entre texture )          *****
+        // *****                                                                                *****
+        // ******************************************************************************************
+        /*
+         glContext.bindFramebuffer(glContext.FRAMEBUFFER, rttFrameBufferTab[2]);
+
+         // clear le buffer
+         glContext.viewport(0, 0, rttFrameBufferTab[2].width, rttFrameBufferTab[2].height);
+         glContext.enable(glContext.DEPTH_TEST);
+         glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+
+         mat4.identity(pMatrix);
+         mat4.identity(mvMatrix);
+
+         glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
+         glContext.activeTexture(glContext.TEXTURE0);
+         glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[0]);
+         glContext.uniform1i(ptr.samplerUniformA3, 0);
+
+         glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[1]);
+         glContext.uniform1i(ptr.samplerUniformB3, 0);
+
+         glContext.uniformMatrix4fv(ptr.pMatrixUniform3, false, pMatrix);
+         glContext.uniformMatrix4fv(ptr.mvMatrixUniform3, false, mvMatrix);
+         glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+         glContext.vertexAttribPointer(ptr.vertexPositionAttribute3, 3, glContext.FLOAT, false, 0, 0);
+         glContext.bindBuffer(glContext.ARRAY_BUFFER, squareColorBuffer);
+         glContext.vertexAttribPointer(ptr.colorAttribute3, 4, glContext.FLOAT, false, 0, 0);
+         glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+         glContext.vertexAttribPointer(ptr.textureCoordsAttribute3, 2, glContext.FLOAT, false, 0, 0);
+         // type du graphique
+         glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+
+         glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[2]);
+         glContext.generateMipmap(glContext.TEXTURE_2D);
+         glContext.bindTexture(glContext.TEXTURE_2D, null);
+
+         // mis en place du buffer frame
+         glContext.bindFramebuffer(glContext.FRAMEBUFFER, null);
+
+         glContext.useProgram(progList[2]);
+         */
+        //------------------------ fin du deuxieme framebuffer ------------------------------------
+
+        // ******************************************************************************************
+        // *****                                                                                *****
+        // *****                        DESSINE SUR LE CANEVAS ( IMAGE DE FOND )                *****
+        // *****                                                                                *****
+        // ******************************************************************************************
+
+        glContext.useProgram(progList[10]);
+
+        glContext.enable(glContext.DEPTH_TEST);
+        glContext.clear(glContext.COLOR_BUFFER_BIT | glContext.DEPTH_BUFFER_BIT);
+        glContext.viewport(0, 0, c_width, c_height);
+
+        // dessine le caré
+        mat4.identity(pMatrix);
+        mat4.identity(mvMatrix);
+
+        glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, squareIndexBuffer);
+        glContext.activeTexture(glContext.TEXTURE0);
+        glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[7]);
+        glContext.uniform1i(ptr.samplerUniformRender, 0);
+
+        glContext.uniformMatrix4fv(ptr.pMatrixUniformRender, false, pMatrix);
+        glContext.uniformMatrix4fv(ptr.mvMatrixUniformRender, false, mvMatrix);
+        glContext.bindBuffer(glContext.ARRAY_BUFFER, squareVertexBuffer);
+        glContext.vertexAttribPointer(ptr.vertexPositionAttributeRender, 3, glContext.FLOAT, false, 0, 0);
+        glContext.bindBuffer(glContext.ARRAY_BUFFER, squareColorBuffer);
+        glContext.vertexAttribPointer(ptr.colorAttributeRender, 4, glContext.FLOAT, false, 0, 0);
+        glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+        glContext.vertexAttribPointer(ptr.textureCoordsAttributeRender, 2, glContext.FLOAT, false, 0, 0);
+
+        // type du graphique
+        glContext.drawElements(glContext.TRIANGLE_STRIP, indicesSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+
+        // ******************************************************************************************
+        // *****                                                                                *****
+        // *****                      DESSINE SUR LE CANEVAS ( PETIT CARRE RENDU )              *****
+        // *****                                                                                *****
+        // ******************************************************************************************
+        /*
+         glContext.useProgram(progList[1]);
+
+         // dessine le mini carrée
+
+         glContext.activeTexture(glContext.TEXTURE0);
+         glContext.bindTexture(glContext.TEXTURE_2D, rttTextureTab[0]);
+         glContext.uniform1i(ptr.samplerUniform1, 0);
+
+         glContext.uniformMatrix4fv(ptr.pMatrixUniform1, false, pMatrix);
+         glContext.uniformMatrix4fv(ptr.mvMatrixUniform1, false, mvMatrix);
+         glContext.bindBuffer(glContext.ARRAY_BUFFER, multiSquareVertexBuffer);
+         glContext.vertexAttribPointer(ptr.vertexPositionAttribute1, 3, glContext.FLOAT, false, 0, 0);
+         glContext.bindBuffer(glContext.ARRAY_BUFFER, multiSquareColorBuffer);
+         glContext.vertexAttribPointer(ptr.colorAttribute1, 4, glContext.FLOAT, false, 0, 0);
+         glContext.bindBuffer(glContext.ELEMENT_ARRAY_BUFFER, multiSquareIndexBuffer);
+         glContext.bindBuffer(glContext.ARRAY_BUFFER, textureBuffersArray);
+         glContext.vertexAttribPointer(ptr.textureCoordsAttribute1, 2, glContext.FLOAT, false, 0, 0);
+
+         // type du graphique
+         glContext.drawElements(glContext.TRIANGLE_STRIP, indicesMultiSquareCanevas.length, glContext.UNSIGNED_SHORT, 0);
+         */
         }
+
         function initWebGL() {
             video = document.getElementById("videoElement");
             glContext = getGLContext('webgl-canvas');
@@ -1163,7 +1340,7 @@
             alert("C'est cassé");
         }
 
-        function initTextureWebcam(sFilename, texturen, c) {
+        function initTextureWebcam() {
             textureWebcam = glContext.createTexture();
             var c = document.createElement("canvas");
             c.width = 512;
@@ -1177,13 +1354,7 @@
             glContext.texParameteri(glContext.TEXTURE_2D, glContext.TEXTURE_WRAP_T, glContext.CLAMP_TO_EDGE);
         }
 
-        function createImageFromTexture(gl,namecanvas, texture) {
-
-            var canvas = document.getElementById(namecanvas);
-            var context = canvas.getContext('2d');
-
-            var height = canvas.height;
-            var width = canvas.width;
+        function createImageFromTexture(gl, namecanvas, texture, width, height) {
 
             // Create a framebuffer backed by the texture
             var framebuffer = gl.createFramebuffer();
@@ -1196,20 +1367,38 @@
 
             gl.deleteFramebuffer(framebuffer);
 
+            // Create a 2D canvas to store the result
+            var canvas = document.getElementById(namecanvas);
+            canvas.width = width;
+            canvas.height = height;
+            var context = canvas.getContext('2d');
             // Copy the pixels to a 2D canvas
             var imageData = context.createImageData(width, height);
             imageData.data.set(data);
             context.putImageData(imageData, 0, 0);
 
-            var img = new Image();
-            img.src = canvas.toDataURL();
-            return img;
+            /*  var canvas = document.getElementById(namecanvas);
+             var context = canvas.getContext('2d');
+             var height = canvas.height;
+             var width = canvas.width;
+             // Create a framebuffer backed by the texture
+             var framebuffer = gl.createFramebuffer();
+             gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+             // Read the contents of the framebuffer
+             var data = new Uint8Array(width * height * 4);
+             gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, data);
+             gl.deleteFramebuffer(framebuffer);
+             // Copy the pixels to a 2D canvas
+             var imageData = context.createImageData(width, height);
+             imageData.data.set(data);
+             context.putImageData(imageData, 0, 0);*/
         }
     </script>
     <title>Un simple triangle</title>
 </head>
 <body id="body"> <!-- onload="initWebGL()" -->
-<canvas id="webgl-canvas" width="1024" height="700" style="margin-left: auto;margin-right: auto;border:1px solid;">>
+<canvas id="webgl-canvas" width="512" height="512" style="margin-left: auto;margin-right: auto;border:1px solid;">>
     HTML5 is not supported
 </canvas>
 
@@ -1222,76 +1411,48 @@
     <tr>
         <td>
             <p>Image sans traitement</p>
-            <canvas id="canvas2" width="300" height="200">
+            <canvas id="canvas0" width="300" height="200">
                 HTML5 n'est pas supporté
             </canvas>
         </td>
         <td>
             <p>Couche des cônes</p>
-            <canvas id="canvas3" width="300" height="200">
+            <canvas id="canvas1" width="300" height="200">
                 HTML5 n'est pas supporté
             </canvas>
         </td>
         <td>
             <p>Couche des Horizontales</p>
-            <canvas id="canvas4" width="300" height="200">
+            <canvas id="canvas2" width="300" height="200">
                 HTML5 n'est pas supporté
             </canvas>
         </td>
 
-    </tr>
-
-    <!-- 2eme ligne -->
-    <tr>
-        <td colspan="2">
-        </td>
-        <td>
-            <label>0</label>
-            <input id="sliderLayer2" type="range" min="0" max="20" value="5" step="1" onchange ="setNbOfIterationsInLayer2()"></input>
-            <label>20</label>
-            <p id="nbOfIterationsInLayer2">5</p>
-        </td>
     </tr>
 
     <!-- 3eme ligne -->
     <tr>
         <td>
             <p>Couche des Ganglionaires</p>
-            <div id="canvasLayer5">
-            </div>
+            <canvas id="canvas3" width="300" height="200">
+                HTML5 n'est pas supporté
+            </canvas>
         </td>
         <td>
             <p>Couche des Amacrines</p>
-            <div id="canvasLayer4">
-            </div>
+            <canvas id="canvas6" width="300" height="200">
+                HTML5 n'est pas supporté
+            </canvas>
         </td>
         <td>
             <p>Couche des Bipolaires</p>
-            <div id="canvasLayer3">
-            </div>
-        </td>
-    </tr>
-
-    <!-- 4eme ligne -->
-    <tr>
-        <td>
-        </td>
-        <td>
-            <label>0</label>
-            <input id="sliderLayer4" type="range" min="0" max="20" value="5" step="1" onchange ="setNbOfIterationsInLayer4()"></input>
-            <label>20</label>
-            <p id="nbOfIterationsInLayer4">5</p>
-        </td>
-        <td>
+            <canvas id="canvas7" width="300" height="200">
+                HTML5 n'est pas supporté
+            </canvas>
         </td>
     </tr>
     </tbody>
 </table>
-
-
-
-
-
 
 
 <div> nombre d'application du blur
@@ -1325,21 +1486,21 @@
 <script>
     initWebGL();
 
-    function showValIterationBlur(newVal){
-        document.getElementById("iterationBlur").innerHTML="valeur : " + newVal;
-        nbIterationBlur = newVal;
+    function showValIterationBlur(newVal) {
+        document.getElementById("iterationBlur").innerHTML = "valeur : " + newVal;
+        nbIterationBlurCell = newVal;
     }
-    function showValAlphaBlur(newVal){
-        document.getElementById("alphaBlur").innerHTML="valeur : " + newVal;
+    function showValAlphaBlur(newVal) {
+        document.getElementById("alphaBlur").innerHTML = "valeur : " + newVal;
         alphaBlur = newVal;
     }
 
-    function showValIterationGradient(newVal){
-        document.getElementById("iterationGradient").innerHTML="valeur : " + newVal;
+    function showValIterationGradient(newVal) {
+        document.getElementById("iterationGradient").innerHTML = "valeur : " + newVal;
         nbIterationGradient = newVal;
     }
-    function showValToleranceGradient(newVal){
-        document.getElementById("toleranceGradient").innerHTML="valeur : " + newVal;
+    function showValToleranceGradient(newVal) {
+        document.getElementById("toleranceGradient").innerHTML = "valeur : " + newVal;
         toleranceGradient = newVal;
     }
 </script>
